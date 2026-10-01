@@ -1,0 +1,28 @@
+.b2b-settings { max-width: 920px; padding: 20px 16px 32px 0; }
+.b2b-settings h1 { font-weight: 650; color: #18181b; }
+.b2b-settings-intro { color: #71717a; font-size: 15px; margin-bottom: 28px; }
+.b2b-settings-card { background: white; border: 1px solid #e4e4e7; border-radius: 12px; padding: 20px 24px 24px; margin: 0 0 24px; }
+.b2b-settings-card legend { font-size: 15px; font-weight: 600; color: #27272a; padding: 0 8px; }
+.b2b-settings-card p { color: #71717a; max-width: 720px; line-height: 1.7; margin: 0 0 18px; }
+.b2b-settings-card p:last-child { margin: 14px 0 0; }
+.b2b-palette-options, .b2b-radius-options { display: flex; flex-wrap: wrap; gap: 12px; }
+.b2b-palette-choice, .b2b-radius-options label { display: flex; align-items: center; gap: 10px; padding: 12px 14px; min-height: 44px; border: 1px solid #e4e4e7; border-radius: 8px; cursor: pointer; }
+.b2b-palette-choice:has(input:checked), .b2b-radius-options label:has(input:checked) { border-color: #4f46e5; box-shadow: 0 0 0 1px #4f46e5; background: #fafaff; }
+.b2b-settings-card input { margin: 0; }
+.b2b-settings-card small { display: block; margin-top: 3px; font-size: 11px; color: #71717a; }
+.b2b-swatch { display: block; width: 22px; height: 22px; border-radius: 50%; }
+.b2b-font-choice { display: flex; align-items: center; gap: 12px; min-height: 44px; font-weight: 600; color: #3f3f46; }
+.b2b-font-choice input[role="switch"] { appearance: none; width: 38px; height: 22px; border: 1px solid #a1a1aa; border-radius: 20px; background: #a1a1aa; box-shadow: none; position: relative; cursor: pointer; }
+.b2b-font-choice input[role="switch"]::before { content: ''; margin: 0; position: absolute; width: 16px; height: 16px; top: 2px; left: 2px; border-radius: 50%; background: white; }
+.b2b-font-choice input[role="switch"]:checked { background: #4f46e5; border-color: #4f46e5; }
+.b2b-font-choice input[role="switch"]:checked::before { left: 18px; }
+.b2b-settings-card input:focus-visible { outline: 2px solid #4f46e5; outline-offset: 3px; }
+.b2b-radius-sample { width: 40px; height: 30px; border: 2px solid #71717a; border-radius: 7px; }
+.b2b-radius-sample.b2b-square { border-radius: 0; }
+.b2b-settings .button-primary { background: #4f46e5; border-color: #4f46e5; min-height: 40px; padding: 0 20px; }
+.b2b-settings .button-primary:hover { background: #4338ca; border-color: #4338ca; }
+.b2b-custom-color-wrap { display: flex; align-items: center; gap: 10px; margin-top: 14px; flex-wrap: wrap; }
+.b2b-custom-color-wrap input[type="color"] { width: 44px; height: 38px; border: 1px solid #e4e4e7; border-radius: 6px; padding: 2px; cursor: pointer; background: white; }
+.b2b-custom-color-wrap input[type="text"] { height: 38px; border: 1px solid #e4e4e7; border-radius: 6px; padding: 0 10px; font-size: 13px; font-family: monospace; }
+@media (max-width: 600px) { .b2b-settings-card { padding: 16px; } .b2b-radius-options label { width: 100%; } }
+

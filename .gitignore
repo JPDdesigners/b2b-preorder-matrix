@@ -1,0 +1,34 @@
+# Dependencies and local tooling
+node_modules/
+.codex/
+.agents/
+.aws/
+.idea/
+.vscode/
+.DS_Store
+Thumbs.db
+*.log
+*.local
+
+# Credentials and local configuration
+.env
+.env.*
+!.env.example
+*.pem
+*.key
+
+# Local release archives, screenshots, old applications and work notes
+/releases/
+/artifacts/
+/all vue apps/
+/agent.md
+/agent-v2.0-history.md
+/REVIEW-*.md
+*.zip
+*.sql
+
+# Superseded load-generator experiment and unused starter assets
+/snippets/staging-fill-order-list.txt
+/tests/staging-fill-snippet.php
+/b2b-matrix/src/assets/
+/b2b-matrix/public/icons.svg

@@ -1,0 +1,28 @@
+<?php
+/** Remove only data owned by B2B Pre-Order Matrix on plugin deletion. */
+if ( ! defined( 'WP_UNINSTALL_PLUGIN' ) ) { exit; }
+
+function b2b_matrix_uninstall_site() {
+    global $wpdb;
+
+    foreach ( [ 'b2b_preorder_items', 'b2b_preorder_batches' ] as $suffix ) {
+        $table = $wpdb->prefix . $suffix;
+        if ( preg_match( '/^[A-Za-z0-9_]+$/D', $table ) ) {
+            $wpdb->query( "DROP TABLE IF EXISTS `{$table}`" );
+        }
+    }
+
+    delete_option( 'b2b_matrix_db_version' );
+    delete_option( 'b2b_matrix_appearance' );
+    delete_option( 'b2b_matrix_catalog_generation' );
+}
+
+if ( is_multisite() ) {
+    foreach ( get_sites( [ 'fields' => 'ids', 'number' => 0 ] ) as $site_id ) {
+        switch_to_blog( $site_id );
+        b2b_matrix_uninstall_site();
+        restore_current_blog();
+    }
+} else {
+    b2b_matrix_uninstall_site();
+}

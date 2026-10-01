@@ -1,0 +1,34 @@
+<!doctype html>
+<html lang="el"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Order list loading / guest fixture</title>
+<style>body{font:14px system-ui;background:#f4f4f5;margin:24px}main{max-width:1100px;margin:auto}nav{display:flex;gap:16px;align-items:center;flex-wrap:wrap}nav button{padding:10px}</style></head>
+<body><main><nav><span>Τοπική προσομοίωση · χωρίς αποθήκευση σε κατάστημα</span><button id="release">Φόρτωση προσωπικών δεδομένων</button><a href="?guest=1">Επισκέπτης</a><a href="?">Συνδεδεμένος</a></nav>
+<div class="b2b-vue-matrix-container" data-product-id="101" data-session-endpoint="/fixture/admin-ajax.php" data-api-endpoint="/fixture/matrix"></div></main>
+<script type="module">
+import { MOCK_DATA } from '../src/stores/mockData.js';
+const guest = new URL(location.href).searchParams.has('guest');
+const data = structuredClone(MOCK_DATA);
+const prices = {};
+for (const row of Object.values(data.matrix)) for (const cell of Object.values(row)) { prices[cell.id] = cell.price; delete cell.price; }
+const structure = { product_id: 101, structure_version: 'fixture-v1', product_name: data.product_name, parent_sku: data.parent_sku, colors: data.colors, sizes: data.sizes, matrix: data.matrix };
+document.querySelector('.b2b-vue-matrix-container').dataset.structure = JSON.stringify(structure);
+const pending = new Promise(resolve => document.getElementById('release').addEventListener('click', resolve, { once: true }));
+const originalFetch = window.fetch;
+const saved = guest ? {} : { ...data.existing_quantities };
+window.fetch = async (url, options = {}) => {
+  const address = new URL(url, location.origin);
+  if (!address.pathname.startsWith('/fixture/')) return originalFetch(url, options);
+  const action = address.searchParams.get('action');
+  const session = { user_id: guest ? 0 : 7, nonce: 'fixture-nonce' };
+  let body;
+  if (action === 'b2b_matrix_session') body = { success: true, data: session };
+  else if (options.method === 'POST') {
+    for (const item of JSON.parse(options.body).items) { if (item.qty) saved[item.id] = item.qty; else delete saved[item.id]; }
+    body = { success: true, data: { items: saved, nonce: session.nonce } };
+  } else {
+    await pending;
+    body = { success: true, data: { ...session, structure_version: 'fixture-v1', prices, existing_quantities: saved, currency: 'EUR', price_decimals: 2, appearance: { palette: 'indigo', lightbox: 'site' }, login_url: '?', max_qty: 99999 } };
+  }
+  return new Response(JSON.stringify(body), { headers: { 'Content-Type': 'application/json' } });
+};
+await import('../src/main.js');
+</script></body></html>

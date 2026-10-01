@@ -1,0 +1,17 @@
+import { defineConfig } from 'vite'
+import vue from '@vitejs/plugin-vue'
+
+export default defineConfig({
+  base: './',
+  plugins: [
+    vue()
+  ],
+  build: {
+    rollupOptions: {
+      output: {
+        entryFileNames: 'matrix-app.js',
+        assetFileNames: 'matrix-style.[ext]'
+      }
+    }
+  }
+})

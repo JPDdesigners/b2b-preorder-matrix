@@ -1,0 +1,14 @@
+@import "./list-layout.css";
+
+/* Scoped baseline only: leave the WordPress theme outside our application intact. */
+.b2b-ui { color: #27272a; font-family: var(--b2b-font, inherit); font-size: 14px; line-height: 1.5; text-align: left; }
+.b2b-ui *, .b2b-ui *::before, .b2b-ui *::after { box-sizing: border-box; }
+.b2b-ui :where(h1,h2,h3,h4,p) { margin: 0; padding: 0; font-family: inherit; text-transform: none; letter-spacing: normal; }
+.b2b-ui :where(button,input,textarea,select) { font: inherit; letter-spacing: normal; text-transform: none; margin: 0; }
+.b2b-ui :where(button) { min-width: 0; }
+.b2b-ui :where(svg) { width: 18px; height: 18px; flex-shrink: 0; }
+.b2b-ui .b2b-field { display: block; width: 100%; min-height: 44px; height: auto; padding: 10px 12px; color: #27272a; background: white; border: 1px solid #d4d4d8; border-radius: var(--b2b-radius-input, 8px); box-shadow: none; }
+.b2b-ui .b2b-field:focus { border-color: var(--b2b-primary); outline: 2px solid var(--b2b-primary-soft); outline-offset: 1px; }
+.b2b-ui :where(button,a):focus-visible { outline: 2px solid var(--b2b-primary); outline-offset: 3px; }
+@media (prefers-reduced-motion: reduce) { .b2b-ui *, .b2b-ui *::before, .b2b-ui *::after { animation: none !important; transition: none !important; } }
+
