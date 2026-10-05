@@ -2,6 +2,28 @@
 <script type="module">
 import { MOCK_DATA } from '../src/stores/mockData.js';
 const flags = new URLSearchParams(location.search), originalFetch = window.fetch;
+if (flags.has('headerclash')) {
+ const header = document.createElement('header');
+ header.className = 'fixture-sticky-header';
+ header.textContent = 'Sticky header του theme · δοκιμή επικάλυψης';
+ const style = document.createElement('style');
+ style.textContent = '.fixture-sticky-header { box-sizing: border-box; position: fixed; inset: 0 0 auto; height: 120px; z-index: 2147483647; padding: 24px; background: #172033; color: white; } .b2b-order-list-container { isolation: isolate; transform: translateZ(0); } .list-top-card { overflow: hidden; transform: translateZ(0); }';
+ document.head.append(style); document.body.prepend(header);
+}
+if (flags.has('nopopover')) delete HTMLElement.prototype.showPopover;
+// Desktop integration tests can reproduce a keyboard shrinking only the visual viewport.
+if (flags.has('keyboard')) {
+ const nativeViewport = window.visualViewport, visibleViewport = new EventTarget();
+ Object.defineProperties(visibleViewport, {
+  width: {get: () => nativeViewport?.width || window.innerWidth},
+  height: {get: () => Math.max(160, (nativeViewport?.height || window.innerHeight) - 600)},
+  offsetLeft: {get: () => nativeViewport?.offsetLeft || 0},
+  offsetTop: {get: () => nativeViewport?.offsetTop || 0},
+ });
+ nativeViewport?.addEventListener('resize', () => visibleViewport.dispatchEvent(new Event('resize')));
+ nativeViewport?.addEventListener('scroll', () => visibleViewport.dispatchEvent(new Event('scroll')));
+ Object.defineProperty(window, 'visualViewport', {value: visibleViewport, configurable: true});
+}
 // Reproduce a theme's single-product layout class leaking into list cards.
 if (flags.has('themeclash')) {
  const theme = document.createElement('style');
@@ -10,31 +32,56 @@ if (flags.has('themeclash')) {
 }
 const appearance = { palette: flags.get('palette') || 'indigo', radius: flags.has('square') ? 'square' : 'rounded' };
 const garment = color => 'data:image/svg+xml,' + encodeURIComponent(`<svg xmlns="http://www.w3.org/2000/svg" width="160" height="200" viewBox="0 0 160 200"><rect width="160" height="200" fill="#f4f4f5"/><path d="M52 40L25 66l18 25 12-9v80h50V82l12 9 18-25-27-26-16 9H68z" fill="${color}"/><path d="M68 44q12 20 24 0" fill="none" stroke="#fff" stroke-opacity=".6" stroke-width="4"/></svg>`);
-let items = flags.has('empty') ? [] : [
+const catalogSeed = [
  {id:101,sku:'245110',name:'Σετ μπλούζα και παντελόνι',brand_name:'Joyce',brand_filter_slug:'joyce',brand_slug:'joyce',total_qty:24,total_val:348,image:garment('#aaa38e'),root_filters:[{id:101,name:'Joyce',slug:'joyce'}],category_filters:[{id:1,root_id:101,name:'Αγόρι',root_name:'Joyce'}]},
  {id:102,sku:'245204',name:'Βαμβακερό φούτερ με κουκούλα',brand_name:'Paco',brand_filter_slug:'paco',brand_slug:'paco',total_qty:18,total_val:324,image:garment('#778b92'),root_filters:[{id:102,name:'Paco',slug:'paco'}],category_filters:[{id:3,root_id:102,name:'Αγόρι',root_name:'Paco'}]},
  {id:103,sku:'245308',name:'Παιδικό σετ πιτζάμες',brand_name:'Dreams',brand_filter_slug:'dreams',brand_slug:'dreams',total_qty:12,total_val:156,image:garment('#c8a09b'),root_filters:[{id:103,name:'Dreams',slug:'dreams'}],category_filters:[{id:2,root_id:103,name:'Κορίτσι',root_name:'Dreams'}]},
 ];
+let items = flags.has('empty') ? [] : catalogSeed.map(item => ({ ...item }));
+const catalog = catalogSeed.concat([
+ {...catalogSeed[0],id:104,sku:'2451101',name:'Σετ με κωδικό που ξεκινά από 245110'},
+ {...catalogSeed[0],id:105,sku:'8245110',name:'Σετ με κωδικό που περιέχει 245110'},
+ {...catalogSeed[0],id:106,sku:'OTHER',name:'Προϊόν 245110 — αντιστοίχιση ονόματος'},
+ ...(flags.has('ambiguous') ? [{...catalogSeed[0],id:107,name:'Δεύτερο προϊόν με ίδιο SKU'}] : []),
+]);
 if (flags.has('two')) items = items.slice(0, 2);
 if (flags.has('many') || flags.has('fifty')) items = Array.from({length: flags.has('many') ? 200 : 50}, (_, index) => ({ ...items[index % items.length], id: index + 1001, sku: `SKU-${index + 1001}`, name: `Προϊόν ${index + 1} · ${items[index % items.length].name}` }));
 if (flags.has('long') && items.length) items[0] = { ...items[0], name: 'Παιδικό σετ μπλούζα και παντελόνι με πολύ μεγάλο όνομα για έλεγχο της στοίχισης των στηλών', sku: 'SKU-WITH-A-LONG-CATALOG-CODE-1001', brand_name: 'Joyce Kids Collection', unavailable: true };
 let batch=null, failedOnce=false;
+const orderChannelContext = {canChoose: flags.has('staff') || flags.has('switched'), defaultLive: flags.has('switched')};
+let removedItems = [];
+if (flags.has('cancelled') || flags.has('cancelledempty')) {
+ items = flags.has('cancelledempty') ? [] : items.filter(item => item.id !== 102);
+ removedItems = Array.from({length:15}, (_, index) => ({id:index === 0 ? 101 : index === 1 ? 102 : 7000+index,sku:String(2413851+index),name:index === 0 ? 'Σετ μπλούζα και παντελόνι' : 'Ακυρωμένος οδηγός '+(index+1),partial:index === 0 && items.some(item => item.id === 101),variations:[{id:8000+index,sku:'2413851-BLUE-M',name:'Μπλε / M'}]}));
+}
 const savedByProduct = new Map(), requestCounts = {};
 const savedFor = id => { if (!savedByProduct.has(id)) savedByProduct.set(id, {...MOCK_DATA.existing_quantities}); return savedByProduct.get(id); };
-const payload = () => ({user_id:7,nonce:'fixture',appearance,currency:'EUR',price_decimals:2,season:'Φθινόπωρο / Χειμώνας 2026',items,customerInfo:{company:'ΠΑΠΑΔΟΠΟΥΛΟΥ ΕΜΠΟΡΙΚΗ',afm:'123456789',email:'billing@example.test'},totalQty:items.reduce((n,i)=>n+i.total_qty,0),totalVal:items.reduce((n,i)=>n+i.total_val,0),quoteVersion:'0'.repeat(64),quoteParents:Object.fromEntries(items.map(item=>[item.id,'a'.repeat(64)])),brandSummary:['joyce','paco','dreams'].map(slug=>({slug,name:slug[0].toUpperCase()+slug.slice(1),qty:items.filter(i=>i.brand_slug===slug).reduce((n,i)=>n+i.total_qty,0)})).filter(b=>b.qty),activeBatch:batch&&!batch.complete?{batch_token:'test',wc_order_id:1001,status:batch.status,...batch}:null});
+const payload = () => ({user_id:7,nonce:'fixture',orderChannelContext,appearance,currency:'EUR',price_decimals:2,season:'Φθινόπωρο / Χειμώνας 2026',items,customerInfo:{company:'ΠΑΠΑΔΟΠΟΥΛΟΥ ΕΜΠΟΡΙΚΗ',afm:'123456789',email:'billing@example.test'},totalQty:items.reduce((n,i)=>n+i.total_qty,0),totalVal:items.reduce((n,i)=>n+i.total_val,0),quoteVersion:'0'.repeat(64),quoteParents:Object.fromEntries(items.map(item=>[item.id,'a'.repeat(64)])),brandSummary:['joyce','paco','dreams'].map(slug=>({slug,name:slug[0].toUpperCase()+slug.slice(1),qty:items.filter(i=>i.brand_slug===slug).reduce((n,i)=>n+i.total_qty,0)})).filter(b=>b.qty),activeBatch:batch&&!batch.complete?{batch_token:'test',wc_order_id:1001,status:batch.status,...batch}:null});
 window.fetch = async (url, options={}) => {
  const target=new URL(url,location.origin);if(!target.pathname.startsWith('/fixture/'))return originalFetch(url,options);
  const fields=options.method==='POST'?new URLSearchParams(options.body):target.searchParams;const action=fields.get('action');
  requestCounts[action] = (requestCounts[action] || 0) + 1; document.querySelector('nav').dataset.requests = JSON.stringify(requestCounts);
+ if(action==='b2b_search_products')document.querySelector('nav').dataset.completedSearch='';
  await new Promise(r=>setTimeout(r,250));let data;
  if(flags.has('slow')&&['b2b_start_order','b2b_add_order_batch','b2b_finalize_order'].includes(action))await new Promise(r=>setTimeout(r,2500));
  if(flags.has('slowfinal')&&action==='b2b_finalize_order')await new Promise(r=>setTimeout(r,6000));
  if(flags.has('retryfinal')&&action==='b2b_finalize_order'&&!failedOnce){failedOnce=true;return new Response(JSON.stringify({success:false,data:{message:'Η ολοκλήρωση διακόπηκε. Δοκιμάστε Συνέχιση.'}}),{status:503});}
  if(flags.has('retry')&&action==='b2b_add_order_batch'&&!failedOnce){failedOnce=true;return new Response(JSON.stringify({success:false,data:{message:'Η σύνδεση διακόπηκε. Δοκιμάστε Συνέχιση.'}}),{status:503});}
  if(flags.has('guest'))return new Response(JSON.stringify({success:false,data:{message:'Συνδεθείτε για να δείτε τη λίστα σας.'}}),{status:401});
- if(action==='b2b_get_preorder_list_data') data=payload();
+ if(action==='b2b_get_preorder_list_data') data={...payload(),removedItems,removedNoticeToken:removedItems.length?'fixture-cancellation-1':''};
+ else if(action==='b2b_acknowledge_removed_items'){removedItems=[];data=true;}
  else if(action==='b2b_matrix_session') data={user_id:7,nonce:'fixture'};
- else if(action==='b2b_search_products') data=[{id:101,sku:'245110',name:'Σετ μπλούζα και παντελόνι',brand_name:'Joyce',image:garment('#aaa38e')}];
+ else if(action==='b2b_search_products') {
+  if(flags.has('slowsearch'))await new Promise(r=>setTimeout(r,800));
+  const query=fields.get('q').trim().toLocaleLowerCase('el'), ranks={exact:0,prefix:1,contains:2,title:3};
+  data=catalog.map(product=>{
+   const variation=product.id===101?'245110-BLUE-M':'',rank=code=>code.toLocaleLowerCase('el')===query?0:code.toLocaleLowerCase('el').startsWith(query)?1:2;
+   const matched_sku=[product.sku,variation].filter(Boolean).sort((a,b)=>rank(a)-rank(b)||a.localeCompare(b)).find(code=>code.toLocaleLowerCase('el').includes(query))||'';
+   const matched=matched_sku.toLocaleLowerCase('el'),sku_match=matched===query?'exact':matched.startsWith(query)&&matched?'prefix':matched?'contains':product.name.toLocaleLowerCase('el').includes(query)?'title':'';
+   return {...product,matched_sku,sku_match};
+  }).filter(product=>product.sku_match).sort((a,b)=>ranks[a.sku_match]-ranks[b.sku_match]||(a.matched_sku||a.name).localeCompare(b.matched_sku||b.name)).slice(0,8);
+  document.querySelector('nav').dataset.completedSearch=query;
+ }
  else if(action==='b2b_get_matrix_data') data={...structuredClone(MOCK_DATA),user_id:7,nonce:'fixture',existing_quantities:savedFor(Number(fields.get('product_id'))),appearance,product_id:Number(fields.get('product_id'))};
  else if(action==='b2b_save_matrix'){
   const parentId=Number(fields.get('product_id')), saved=savedFor(parentId);
@@ -48,7 +95,7 @@ window.fetch = async (url, options={}) => {
  }
  else if(action==='b2b_empty_custom_list'){items=[];data=true;}
  else if(action==='b2b_remove_parent_custom'){items=items.filter(i=>i.id!==Number(fields.get('parent_id')));data=true;}
- else if(action==='b2b_start_order'){batch ||= {order_id:1001,token:'test',total:240,processed:0,status:'building',complete:false};data=batch;}
+ else if(action==='b2b_start_order'){batch ||= {order_id:1001,token:'test',total:240,processed:0,status:'building',complete:false,order_channel:orderChannelContext.canChoose && fields.get('live_showroom')==='1'?'live':'online'};document.querySelector('nav').dataset.submittedChannel=batch.order_channel;data=batch;}
  else if(action==='b2b_add_order_batch'){batch.processed=Math.min(240,batch.processed+150);batch.status=batch.processed===240?'ready_to_finalize':'building';data=batch;}
  else if(action==='b2b_finalize_order'){batch={...batch,complete:true,status:'complete',redirect:flags.has('badredirect')?'https://example.invalid/orders':'/tests/orders.html'};items=[];data=batch;}
  else if(action==='b2b_order_process_status')data=batch;

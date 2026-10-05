@@ -1,6 +1,7 @@
 <?php
 if ( ! defined( 'ABSPATH' ) ) { exit; }
 require_once __DIR__ . '/class-b2b-preorder-submission.php';
+require_once __DIR__ . '/class-b2b-order-channel.php';
 
 class B2B_Preorder_List {
     const BATCH_SIZE = 150;
@@ -12,6 +13,7 @@ class B2B_Preorder_List {
         'b2b_start_order' => 'start-order', 'b2b_add_order_batch' => 'add-batch',
         'b2b_finalize_order' => 'finalize-order', 'b2b_order_process_status' => 'order-status',
         'b2b_cancel_order' => 'cancel-order',
+        'b2b_acknowledge_removed_items' => 'acknowledge-removals',
     ];
     public static function init() {
         add_shortcode( 'b2b_preorder_list', [ __CLASS__, 'render_shortcode' ] );
@@ -19,6 +21,10 @@ class B2B_Preorder_List {
         add_action( 'rest_api_init', [ __CLASS__, 'register_rest_routes' ] );
         add_action( 'init', [ 'B2B_Preorder_Submission', 'register_statuses' ] );
         add_filter( 'wc_order_statuses', [ 'B2B_Preorder_Submission', 'order_statuses' ] );
+        add_filter( 'woocommerce_email_actions', [ 'B2B_Preorder_Submission', 'email_actions' ] );
+        add_filter( 'woocommerce_email_classes', [ 'B2B_Preorder_Submission', 'processing_emails' ] );
+        add_filter( 'woocommerce_payment_complete_reduce_order_stock', [ 'B2B_Preorder_Submission', 'reduce_order_stock' ], 10, 2 );
+        add_filter( 'woocommerce_can_reduce_order_stock', [ 'B2B_Preorder_Submission', 'can_reduce_order_stock' ], 10, 2 );
         foreach ( self::ACTIONS as $action => $endpoint ) {
             add_action( 'wp_ajax_' . $action, function() use ( $endpoint ) { self::ajax_dispatch( $endpoint ); } );
             add_action( 'wp_ajax_nopriv_' . $action, [ 'B2B_Matrix_API', 'ajax_unauthorized' ] );
@@ -64,6 +70,7 @@ class B2B_Preorder_List {
         try {
             switch ( $endpoint ) {
                 case 'list-data': $data = self::get_list_payload( $uid ); break;
+                case 'acknowledge-removals': $data = B2B_Matrix_DB::acknowledge_removals( $uid, $params['notice_token'] ?? null ); break;
                 case 'search-products':
                     $q = is_string( $params['q'] ?? null ) ? sanitize_text_field( substr( $params['q'], 0, 120 ) ) : '';
                     $data = strlen( $q ) >= 2 ? self::search_products_catalog( $q, ! empty( $params['sku_only'] ), $uid ) : []; break;
@@ -77,7 +84,7 @@ class B2B_Preorder_List {
                     $items = $params['items'] ?? null;
                     if ( is_string( $items ) ) { $items = json_decode( $items, true ); }
                     $data = B2B_Matrix_API::save_user_product_quantities( $uid, $params['parent_id'] ?? null, $items ); break;
-                case 'start-order': $data = self::execute_start_order( $uid, is_string( $params['customer_note'] ?? null ) ? substr( $params['customer_note'], 0, 4000 ) : '', $params['quote_version'] ?? null ); break;
+                case 'start-order': $data = self::execute_start_order( $uid, is_string( $params['customer_note'] ?? null ) ? substr( $params['customer_note'], 0, 4000 ) : '', $params['quote_version'] ?? null, $params['live_showroom'] ?? null ); break;
                 default:
                     if ( ! in_array( $endpoint, [ 'add-batch', 'finalize-order', 'order-status', 'cancel-order' ], true ) ) { return new WP_Error( 'invalid_action', 'Μη έγκυρη ενέργεια.', [ 'status' => 400 ] ); }
                     $token = $params['token'] ?? $params['process_token'] ?? '';
@@ -88,7 +95,7 @@ class B2B_Preorder_List {
             return is_wp_error( $data ) ? $data : [ 'success' => true, 'data' => $data ];
         } catch ( Throwable $e ) { return B2B_Matrix_DB::db_error(); }
     }
-    public static function execute_start_order( $uid, $note = '', $expected_quote = null ) { return B2B_Preorder_Submission::start( $uid, $note, $expected_quote ); }
+    public static function execute_start_order( $uid, $note = '', $expected_quote = null, $live = null ) { return B2B_Preorder_Submission::start( $uid, $note, $expected_quote, $live ); }
     public static function execute_add_batch( $uid, $oid, $token ) { return B2B_Preorder_Submission::run( 'add-batch', $uid, $oid, $token ); }
     public static function execute_finalize_order( $uid, $oid, $token ) { return B2B_Preorder_Submission::run( 'finalize-order', $uid, $oid, $token ); }
     public static function rest_remove_parent( $request ) { return self::dispatch( 'remove-parent', [ 'parent_id' => $request->get_param( 'parent_id' ), 'expected_user_id' => get_current_user_id() ] ); }
@@ -131,6 +138,11 @@ class B2B_Preorder_List {
      * @return array
      */
     public static function get_list_payload( $user_id, $saved_parent_id = 0, $saved_quantities = null ) {
+        if ( $saved_quantities !== null || (int) $user_id <= 0 ) { return self::build_list_payload( $user_id, $saved_parent_id, $saved_quantities ); }
+        return B2B_Matrix_DB::with_user_lock( $user_id, function() use ( $user_id ) { return self::build_list_payload( $user_id ); } );
+    }
+
+    private static function build_list_payload( $user_id, $saved_parent_id = 0, $saved_quantities = null ) {
         $user_id = (int) $user_id;
         if ( $user_id <= 0 ) {
             return [
@@ -155,6 +167,9 @@ class B2B_Preorder_List {
         }
 
         $removed_items_alert = [];
+        $removed_rows = [];
+        $active_batch = B2B_Matrix_DB::get_active_batch( $user_id );
+        $can_prune = $saved_quantities === null && ! $active_batch;
         $valid_items = $raw_items;
         $cancelled = function_exists( 'jpd_get_canceled_items_bulk' ) ? (array) jpd_get_canceled_items_bulk( array_column( $raw_items, 'variation_id' ) ) : [];
         $cancelled = array_fill_keys( array_map( 'intval', $cancelled ), true );
@@ -173,6 +188,18 @@ class B2B_Preorder_List {
             if ( ! isset( $parent_cache[ $parent_id ] ) ) { $parent_cache[ $parent_id ] = B2B_Matrix_API::get_product( $parent_id ); }
             $parent = $parent_cache[ $parent_id ];
             $var_obj = wc_get_product( $vid );
+            $parent_obj = is_wp_error( $parent ) ? wc_get_product( $parent_id ) : $parent;
+            // Access restrictions and missing prices are not catalog cancellations.
+            $is_cancelled = isset( $cancelled[ $vid ] ) || ! $parent_obj || ! $parent_obj->is_type( 'variable' ) || $parent_obj->get_status( 'edit' ) !== 'publish'
+                || ! $var_obj || ! $var_obj->is_type( 'variation' ) || $var_obj->get_status( 'edit' ) !== 'publish' || (int) $var_obj->get_parent_id() !== $parent_id;
+            if ( $can_prune && $is_cancelled ) {
+                $removed_rows[ $vid ] = [ 'id' => $parent_id, 'variation_id' => $vid,
+                    'name' => $parent_obj ? $parent_obj->get_name() : ( 'Προϊόν #' . $parent_id ),
+                    'sku' => $parent_obj ? $parent_obj->get_sku() : '',
+                    'variation_name' => $var_obj ? $var_obj->get_name() : ( 'Παραλλαγή #' . $vid ),
+                    'variation_sku' => $var_obj ? $var_obj->get_sku() : '' ];
+                continue;
+            }
             $available = ! is_wp_error( $parent ) && $var_obj && $var_obj->is_type( 'variation' ) && $var_obj->get_status( 'edit' ) === 'publish' && (int) $var_obj->get_parent_id() === $parent_id && ! isset( $cancelled[ $vid ] );
             $price = $available ? $var_obj->get_price() : '';
             $variation_price = is_numeric( $price ) && (float) $price >= 0 ? (float) $price : null;
@@ -225,6 +252,20 @@ class B2B_Preorder_List {
             $parents_data[ $parent_id ]['unpriced'] = $parents_data[ $parent_id ]['unpriced'] || $variation_price === null;
             $parents_data[ $parent_id ]['total_qty'] += $qty;
             if ( $variation_price !== null ) { $parents_data[ $parent_id ]['total_val'] += (float) wc_format_decimal( $qty * $variation_price, wc_get_price_decimals() ); }
+        }
+
+        if ( $saved_quantities === null ) {
+            $notice = $can_prune ? B2B_Matrix_DB::prune_cancelled_items( $user_id, $raw_items, $removed_rows ) : B2B_Matrix_DB::removal_notice( $user_id );
+            if ( is_wp_error( $notice ) ) { return $notice; }
+            $retained_ids = array_fill_keys( array_column( $raw_items, 'variation_id' ), true );
+            foreach ( $notice['items'] as $vid => $entry ) {
+                if ( isset( $retained_ids[ $vid ] ) && ! isset( $removed_rows[ $vid ] ) ) { continue; }
+                $pid = $entry['id'];
+                if ( ! isset( $removed_items_alert[ $pid ] ) ) {
+                    $removed_items_alert[ $pid ] = [ 'id' => $pid, 'name' => $entry['name'], 'sku' => $entry['sku'], 'partial' => isset( $parents_data[ $pid ] ), 'variations' => [] ];
+                }
+                $removed_items_alert[ $pid ]['variations'][] = [ 'id' => (int) $vid, 'name' => $entry['variation_name'], 'sku' => $entry['variation_sku'] ];
+            }
         }
 
         // 3. Category Facets per Parent Product
@@ -359,9 +400,11 @@ class B2B_Preorder_List {
         $season = function_exists( 'jpd_get_active_season' ) ? jpd_get_active_season() : '';
 
         // 7. Active batch
-        $active_batch = B2B_Matrix_DB::get_active_batch( $user_id );
-
-        if ( $active_batch ) { unset( $active_batch['snapshot'], $active_batch['error_message'] ); }
+        if ( $active_batch ) {
+            $snapshot = json_decode( $active_batch['snapshot'] ?? '', true );
+            $active_batch['order_channel'] = $snapshot['origin']['channel'] ?? 'unknown';
+            unset( $active_batch['snapshot'], $active_batch['error_message'] );
+        }
         return [
             'user_id' => $user_id, 'nonce' => wp_create_nonce( 'wp_rest' ),
             'appearance' => B2B_Matrix_Settings::get(),
@@ -369,6 +412,7 @@ class B2B_Preorder_List {
             'items'        => $items_list,
             'brandSummary' => $brand_summary,
             'removedItems' => array_values( $removed_items_alert ),
+            'removedNoticeToken' => $notice['token'] ?? '',
             'customerInfo' => $customer_info,
             'season'       => $season,
             'totalQty'     => $grand_qty,
@@ -376,87 +420,85 @@ class B2B_Preorder_List {
             'quoteVersion' => $quote_valid ? B2B_Preorder_Submission::quote_version( $quote_items ) : '',
             'quoteParents' => (object) B2B_Preorder_Submission::parent_quotes( $quote_items ),
             'activeBatch'  => $active_batch,
+            'orderChannelContext' => B2B_Order_Channel::context(),
         ];
     }
 
     public static function search_products_catalog( $query, $sku_only = false, $user_id = 0 ) {
         global $wpdb;
         $clean_q = trim( $query );
-        if ( empty( $clean_q ) ) {
+        $searchable = preg_match( '/^[0-9]+$/D', $clean_q ) ? strlen( $clean_q ) >= 4 : preg_match( '/^.{2,}$/us', $clean_q );
+        if ( ! $searchable ) {
             return [];
         }
 
-        $like = '%' . $wpdb->esc_like( $clean_q ) . '%';
-        $matched_parent_ids = [];
-
-        // 1. Direct SKU match on products or variations
-        $sku_query = $wpdb->prepare(
-            "SELECT DISTINCT p.ID, p.post_parent, p.post_type FROM {$wpdb->posts} p
-             INNER JOIN {$wpdb->postmeta} pm ON (p.ID = pm.post_id AND pm.meta_key = '_sku')
-             WHERE p.post_status = 'publish'
-               AND p.post_type IN ('product', 'product_variation')
-               AND pm.meta_value LIKE %s
-             LIMIT 30",
-            $like
-        );
-        $sku_rows = $wpdb->get_results( $sku_query, ARRAY_A );
-
-        if ( ! empty( $sku_rows ) ) {
-            foreach ( $sku_rows as $row ) {
-                if ( $row['post_type'] === 'product_variation' && (int) $row['post_parent'] > 0 ) {
-                    $matched_parent_ids[] = (int) $row['post_parent'];
-                } else {
-                    $matched_parent_ids[] = (int) $row['ID'];
-                }
+        $escaped = $wpdb->esc_like( $clean_q );
+        $like = '%' . $escaped . '%';
+        $matches = [];
+        $seen = [];
+        $limit = 8;
+        $lookup_table = $wpdb->prefix . 'wc_product_meta_lookup';
+        // Keep exact and prefix lookups separate so both can use WooCommerce's SKU index.
+        // Group by parent before LIMIT: many matching variations must occupy only one slot.
+        foreach ( [ 'exact' => $clean_q, 'prefix' => $escaped . '%', 'contains' => $like ] as $match => $pattern ) {
+            if ( count( $matches ) >= $limit ) { break; }
+            $comparison = $match === 'exact' ? '=' : 'LIKE';
+            $exclude = $seen ? ' AND parent.ID NOT IN (' . implode( ',', array_keys( $seen ) ) . ')' : '';
+            $sku_query = $wpdb->prepare(
+                "SELECT parent.ID AS parent_id, MIN(lookup.sku) AS matched_sku
+                 FROM {$lookup_table} lookup
+                 INNER JOIN {$wpdb->posts} p ON p.ID = lookup.product_id
+                 INNER JOIN {$wpdb->posts} parent ON parent.ID = CASE WHEN p.post_type = 'product_variation' THEN p.post_parent ELSE p.ID END
+                 WHERE p.post_status = 'publish' AND p.post_type IN ('product', 'product_variation')
+                   AND parent.post_status = 'publish' AND parent.post_type = 'product'
+                   AND lookup.sku {$comparison} %s {$exclude}
+                 GROUP BY parent.ID ORDER BY matched_sku, parent.ID LIMIT 30",
+                $pattern
+            );
+            foreach ( $wpdb->get_results( $sku_query, ARRAY_A ) ?: [] as $row ) {
+                $pid = (int) $row['parent_id'];
+                if ( $pid <= 0 || isset( $seen[ $pid ] ) ) { continue; }
+                $seen[ $pid ] = true;
+                $product = B2B_Matrix_API::get_product( $pid );
+                if ( is_wp_error( $product ) ) { continue; }
+                $matches[ $pid ] = [ 'product' => $product, 'sku_match' => $match, 'matched_sku' => $row['matched_sku'] ];
+                if ( count( $matches ) >= $limit ) { break; }
             }
         }
 
-        // 2. Title search if not sku_only
-        if ( ! $sku_only && count( $matched_parent_ids ) < 20 ) {
+        // Names remain available in both ABC and numeric keyboard modes.
+        if ( ! $sku_only && count( $matches ) < $limit ) {
+            $exclude = $seen ? ' AND ID NOT IN (' . implode( ',', array_keys( $seen ) ) . ')' : '';
             $title_query = $wpdb->prepare(
                 "SELECT ID FROM {$wpdb->posts}
                  WHERE post_status = 'publish'
                    AND post_type = 'product'
-                   AND post_title LIKE %s
-                 LIMIT 20",
+                   AND post_title LIKE %s {$exclude}
+                 ORDER BY post_title, ID LIMIT 30",
                 $like
             );
-            $title_ids = $wpdb->get_col( $title_query );
-            if ( ! empty( $title_ids ) ) {
-                $matched_parent_ids = array_merge( $matched_parent_ids, array_map( 'intval', $title_ids ) );
+            foreach ( $wpdb->get_col( $title_query ) ?: [] as $id ) {
+                $pid = (int) $id;
+                if ( $pid <= 0 || isset( $seen[ $pid ] ) ) { continue; }
+                $seen[ $pid ] = true;
+                $product = B2B_Matrix_API::get_product( $pid );
+                if ( is_wp_error( $product ) ) { continue; }
+                $matches[ $pid ] = [ 'product' => $product, 'sku_match' => 'title', 'matched_sku' => '' ];
+                if ( count( $matches ) >= $limit ) { break; }
             }
         }
 
-        $matched_parent_ids = array_values( array_unique( array_filter( $matched_parent_ids ) ) );
-        if ( empty( $matched_parent_ids ) ) {
+        $matched_parent_ids = array_keys( $matches );
+        if ( ! $matched_parent_ids ) {
             return [];
         }
 
-        // 3. User existing items lookup
-        $user_existing = [];
-        if ( $user_id > 0 ) {
-            $table = B2B_Matrix_DB::table_items();
-            $pids_in = implode( ',', array_map( 'intval', $matched_parent_ids ) );
-            $exist_rows = $wpdb->get_results(
-                "SELECT product_id, SUM(qty) as total_qty FROM {$table} WHERE user_id = {$user_id} AND product_id IN ({$pids_in}) AND qty > 0 GROUP BY product_id",
-                ARRAY_A
-            );
-            if ( ! empty( $exist_rows ) ) {
-                foreach ( $exist_rows as $er ) {
-                    $user_existing[ (int) $er['product_id'] ] = (int) $er['total_qty'];
-                }
-            }
-        }
-
-        // 4. Build return list
+        // List badges are derived from the already-loaded list in the frontend.
         $results = [];
         $brand_taxonomies = [ 'product_brand', '_product_brand', 'pa_brand', 'pwb-brand', 'yith_product_brand', 'brand' ];
 
-        foreach ( array_slice( $matched_parent_ids, 0, 15 ) as $pid ) {
-            $product = B2B_Matrix_API::get_product( $pid );
-            if ( is_wp_error( $product ) ) {
-                continue;
-            }
+        foreach ( $matches as $pid => $match ) {
+            $product = $match['product'];
 
             $brand_name = '';
             $brand_slug = '';
@@ -477,11 +519,12 @@ class B2B_Preorder_List {
                 'id'          => $pid,
                 'name'        => $product->get_name(),
                 'sku'         => $product->get_sku(),
+                'sku_match'   => $match['sku_match'],
+                'matched_sku' => $match['matched_sku'],
                 'price'       => (float) $product->get_price(),
                 'image'       => $img_url,
                 'brand_name'  => $brand_name,
                 'brand_slug'  => $brand_slug,
-                'in_list_qty' => $user_existing[ $pid ] ?? 0,
             ];
         }
 

@@ -3,7 +3,7 @@ export function createListApi(endpoint, fetcher = fetch, origin = window.locatio
   const url = new URL(endpoint, origin);
   if (url.origin !== origin) throw new Error('Μη έγκυρη διεύθυνση σύνδεσης.');
   let userId = null;
-  const actions = { 'list-data': 'b2b_get_preorder_list_data', 'search-products': 'b2b_search_products', empty: 'b2b_empty_custom_list', 'remove-parent': 'b2b_remove_parent_custom', 'start-order': 'b2b_start_order', 'add-batch': 'b2b_add_order_batch', 'finalize-order': 'b2b_finalize_order', 'order-status': 'b2b_order_process_status', 'cancel-order': 'b2b_cancel_order' };
+  const actions = { 'list-data': 'b2b_get_preorder_list_data', 'search-products': 'b2b_search_products', empty: 'b2b_empty_custom_list', 'remove-parent': 'b2b_remove_parent_custom', 'start-order': 'b2b_start_order', 'add-batch': 'b2b_add_order_batch', 'finalize-order': 'b2b_finalize_order', 'order-status': 'b2b_order_process_status', 'cancel-order': 'b2b_cancel_order', 'acknowledge-removals': 'b2b_acknowledge_removed_items' };
   async function request(action, params = {}, write = false, signal) {
     const target = new URL(url);
     const fields = new URLSearchParams({ action, ...params });

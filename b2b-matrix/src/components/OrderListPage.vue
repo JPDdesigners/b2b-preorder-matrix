@@ -5,14 +5,20 @@
    <div class="list-hero-icon"><UiIcon name="clipboard-check" /></div>
    <div class="list-hero-copy"><p class="list-eyebrow">ΠΡΟΠΑΡΑΓΓΕΛΙΕΣ <span v-if="payload.season">/ {{ payload.season }}</span></p><h1>Η λίστα μου</h1><p>Επιλέξτε προϊόντα και ελέγξτε τις ποσότητες πριν την υποβολή.</p></div>
    </header>
-   <section v-if="loaded && !loginRequired" ref="quickAdd" class="quick-add" aria-label="Προσθήκη προϊόντος" @focusout="!$event.currentTarget.contains($event.relatedTarget) && (catalogResultsOpen = false)">
+   <section v-if="loaded && !loginRequired" ref="quickAdd" class="quick-add" aria-label="Προσθήκη προϊόντος" @focusout="catalogFocusOut">
     <div class="quick-add-heading"><UiIcon name="plus" /><h2>Προσθήκη προϊόντος</h2></div>
-    <div class="catalog-search-row"><div class="catalog-search-field"><UiIcon name="search" /><input v-model="catalogQuery" class="b2b-field" type="search" aria-label="Αναζήτηση στον κατάλογο" autocomplete="off" :inputmode="numeric ? 'numeric' : 'search'" :disabled="locked" placeholder="Κωδικός ή όνομα…" @input="searchCatalog" @focus="catalogResultsOpen = catalogQuery.trim().length >= 2" @keydown.esc.prevent="catalogResultsOpen = false" /></div><button type="button" class="keyboard-switch" :aria-pressed="numeric" :disabled="locked" :aria-label="numeric ? 'Αλλαγή σε αλφαβητικό πληκτρολόγιο' : 'Αλλαγή σε αριθμητικό πληκτρολόγιο'" @click="numeric = !numeric"><UiIcon name="keyboard" /><span>{{ numeric ? '123' : 'ABC' }}</span></button></div>
-    <div v-if="catalogResultsOpen && (searching || searchError || results.length || searched)" class="catalog-search-results" role="region" aria-label="Αποτελέσματα καταλόγου">
+    <div ref="catalogSearchRow" class="catalog-search-row"><div class="catalog-search-field"><UiIcon name="search" /><input v-model="catalogQuery" class="b2b-field" type="search" aria-label="Αναζήτηση στον κατάλογο" autocomplete="off" enterkeyhint="go" :inputmode="numeric ? 'numeric' : 'search'" :disabled="locked" placeholder="Κωδικός ή όνομα…" @input="searchCatalog()" @focus="showCatalogResults" @click="showCatalogResults" @keydown.enter="enterCatalog" @keydown.esc.prevent="hideCatalogResults" /></div><button type="button" class="keyboard-switch" :aria-pressed="numeric" :disabled="locked" :aria-label="numeric ? 'Αλλαγή σε αλφαβητικό πληκτρολόγιο' : 'Αλλαγή σε αριθμητικό πληκτρολόγιο'" @click="numeric = !numeric" @keydown.tab="tabIntoCatalog"><UiIcon name="keyboard" /><span>{{ numeric ? '123' : 'ABC' }}</span></button></div>
+    <Teleport to="body">
+    <div v-if="catalogResultsOpen && (searching || searchError || results.length || searched)" ref="catalogPanel" class="b2b-ui catalog-search-results" :class="'catalog-panel-' + catalogPlacement" :style="{ ...themeStyle, ...catalogPanelStyle }" :popover="catalogUsesPopover ? 'manual' : undefined" role="region" aria-label="Αποτελέσματα καταλόγου" @mousedown.prevent @focusout="catalogFocusOut" @keydown.esc.prevent="hideCatalogResults">
+     <div class="catalog-results-heading"><span>Αποτελέσματα <span v-if="!searching && results.length" class="catalog-result-count">{{ results.length }}</span></span><button type="button" aria-label="Κλείσιμο αποτελεσμάτων" @click="hideCatalogResults"><UiIcon name="close" /></button></div>
+     <div class="catalog-results-scroll">
      <p v-if="searching" class="catalog-search-status" role="status">Αναζήτηση…</p><p v-else-if="searchError" class="catalog-search-status catalog-search-error" role="alert">{{ searchError }}</p>
-     <template v-else-if="results.length"><button v-for="product in results" :key="product.id" type="button" class="b2b-result" :disabled="locked" @click="openMatrix(product.id)"><img v-if="product.image" :src="product.image" alt="" class="b2b-u-h-14 b2b-u-w-11 b2b-u-object-cover b2b-u-rounded-b2b-sm" /><span class="b2b-u-min-w-0 b2b-u-flex-1"><span class="b2b-u-block b2b-u-text-xs b2b-u-text-zinc-500">{{ product.sku }} · {{ product.brand_name }}</span><span class="b2b-u-block b2b-u-font-medium">{{ product.name }}</span></span><UiIcon name="plus" /></button></template>
+     <template v-else-if="results.length"><p v-if="catalogEnterHint" class="catalog-search-status" role="status">{{ catalogEnterHint }}</p><button v-for="product in catalogResults" :key="product.id" type="button" class="b2b-result" :disabled="locked" @click="openMatrix(product.id, true)"><img v-if="product.image" :src="product.image" alt="" loading="lazy" decoding="async" class="b2b-u-h-14 b2b-u-w-11 b2b-u-object-cover b2b-u-rounded-b2b-sm" /><span class="b2b-u-min-w-0 b2b-u-flex-1"><span class="b2b-u-block b2b-u-text-xs b2b-u-text-zinc-500">{{ product.sku }}<template v-if="product.brand_name"> · {{ product.brand_name }}</template></span><span v-if="product.matched_sku && product.matched_sku !== product.sku" class="catalog-variation-sku">SKU παραλλαγής: {{ product.matched_sku }}</span><span class="b2b-u-block b2b-u-font-medium">{{ product.name }}</span><span v-if="product.in_list" class="catalog-in-list">Ήδη στη λίστα</span></span><UiIcon :name="product.in_list ? 'edit' : 'plus'" /></button></template>
      <p v-else class="catalog-search-status" role="status">Δεν βρέθηκαν προϊόντα.</p>
+     </div>
+     <p v-if="!searching && results.length === 8" class="catalog-results-more">Γράψτε περισσότερα για πιο συγκεκριμένα αποτελέσματα.</p>
     </div>
+    </Teleport>
    </section>
    <div v-else-if="!loginRequired" class="quick-add-loading skeleton" aria-label="Φόρτωση αναζήτησης"></div>
   </B2BCard>
@@ -26,7 +32,7 @@
      <B2BCard class="product-list-card">
       <div class="products-heading"><div class="section-heading"><span class="section-icon"><UiIcon name="layers" /></span><h2>Προϊόντα <span class="count-pill">{{ items.length }}</span></h2></div></div>
       <div v-if="items.length" class="list-filters">
-       <div v-if="items.length" class="root-tabs" role="group" aria-label="Κατηγορίες ρίζας"><button type="button" :class="{ active: !rootId }" :aria-pressed="!rootId" @click="rootId = ''; category = ''">Όλα</button><button v-for="root in roots" :key="root.id" type="button" :class="{ active: rootId === String(root.id) }" :aria-pressed="rootId === String(root.id)" @click="rootId = rootId === String(root.id) ? '' : String(root.id); category = ''">{{ root.name }}</button></div>
+       <div class="list-filter-actions"><div class="root-tabs" role="group" aria-label="Κατηγορίες ρίζας"><button type="button" :class="{ active: !rootId }" :aria-pressed="!rootId" @click="rootId = ''; category = ''">Όλα</button><button v-for="root in roots" :key="root.id" type="button" :class="{ active: rootId === String(root.id) }" :aria-pressed="rootId === String(root.id)" @click="rootId = rootId === String(root.id) ? '' : String(root.id); category = ''">{{ root.name }}</button></div><B2BButton class="empty-list-button" variant="outline" size="sm" icon="trash" :disabled="locked" @click="confirmEmpty">Άδειασμα λίστας</B2BButton></div>
        <div v-if="items.length" class="filter-toolbar"><div class="filter-controls"><div class="category-select"><select v-model="category" class="b2b-field" aria-label="Φίλτρο υποκατηγορίας"><option value="">Όλες οι υποκατηγορίες</option><option v-for="c in categories" :key="c.id" :value="String(c.id)">{{ !rootId && c.root_name ? c.root_name + ' / ' + c.name : c.name }}</option></select><UiIcon name="chevron-down" /></div><div class="list-search-field"><UiIcon name="search" /><input v-model="filter" class="b2b-field" type="search" aria-label="Αναζήτηση στη λίστα" placeholder="Αναζήτηση στη λίστα…" /></div></div><div class="filter-subtotal" role="status"><div class="subtotal-heading"><UiIcon name="clipboard-check" /><span>Υποσύνολο προβολής</span></div><div class="subtotal-body"><div class="subtotal-counts"><span>{{ filtered.length }} {{ filtered.length === 1 ? 'προϊόν' : 'προϊόντα' }}</span><span>{{ filteredTotals.qty }} τεμάχια</span></div><strong v-if="loading" class="inline-skeleton wide"></strong><strong v-else>{{ filteredTotals.unpriced ? '—' : money(filteredTotals.value) }}</strong></div></div></div>
       </div>
       <div v-if="!items.length" class="b2b-u-py-16 b2b-u-px-6 b2b-u-text-center"><div class="b2b-u-mx-auto b2b-u-mb-4 b2b-u-flex b2b-u-h-12 b2b-u-w-12 b2b-u-items-center b2b-u-justify-center b2b-u-rounded-b2b-lg b2b-u-bg-primary-soft b2b-u-text-primary"><UiIcon name="clipboard-check" /></div><h3 class="b2b-u-text-lg b2b-u-font-semibold">Η λίστα σας είναι έτοιμη να γεμίσει</h3><p class="b2b-u-mt-2 b2b-u-text-sm b2b-u-text-zinc-500">Βρείτε ένα προϊόν και επιλέξτε ποσότητες στον πίνακα.</p></div>
@@ -40,19 +46,34 @@
         <div class="b2b-list-product-column b2b-list-product-value"><span class="b2b-list-product-column-label">Αξία</span><span v-if="loading" class="inline-skeleton wide" aria-label="Φόρτωση αξίας"></span><strong v-else>{{ item.unpriced ? '—' : money(item.total_val) }}</strong></div>
         <B2BButton class="b2b-list-product-edit" variant="outline" size="md" icon="edit" :disabled="locked || item.unavailable" @click="openMatrix(item.id)">Αλλαγή</B2BButton>
        </article></div>
-      </div></div><div v-if="items.length" class="list-bottom-bar"><p>{{ filtered.length }} από {{ items.length }} προϊόντα</p><B2BButton class="empty-list-button" variant="outline" size="sm" icon="trash" :disabled="locked" @click="confirmEmpty">Άδειασμα λίστας</B2BButton></div>
+      </div></div><div v-if="items.length" class="list-bottom-bar"><p>{{ filtered.length }} από {{ items.length }} προϊόντα</p></div>
      </B2BCard>
     </div>
     <aside class="list-sidebar" aria-label="Στοιχεία και σύνοψη προπαραγγελίας">
      <B2BCard class="sidebar-card">
       <section class="sidebar-section customer-section" aria-label="Στοιχεία πελάτη"><div class="section-heading"><span class="section-icon"><UiIcon name="user" /></span><h2>Στοιχεία πελάτη</h2></div><dl class="customer-details"><div><dt>Επωνυμία</dt><dd><span v-if="loading" class="inline-skeleton wide"></span><strong v-else>{{ payload.customerInfo?.company || '—' }}</strong></dd></div><div><dt>ΑΦΜ</dt><dd><span v-if="loading" class="inline-skeleton"></span><strong v-else>{{ payload.customerInfo?.afm || '—' }}</strong></dd></div><div><dt>Email τιμολόγησης</dt><dd><span v-if="loading" class="inline-skeleton wide"></span><strong v-else class="customer-email">{{ payload.customerInfo?.email || '—' }}</strong></dd></div></dl></section>
       <section class="sidebar-section note-section" aria-label="Σημείωση πελάτη"><div class="section-heading"><span class="section-icon"><UiIcon name="edit" /></span><h2><label :for="noteId">Σημείωση πελάτη</label></h2></div><textarea :id="noteId" v-model="note" class="b2b-field" rows="3" maxlength="4000" :disabled="locked" placeholder="Κάτι που θέλετε να γνωρίζουμε…"></textarea></section>
+      <section v-if="channelSelection?.canChoose" class="sidebar-section order-channel-section" aria-label="Προέλευση παραγγελίας">
+       <label class="order-channel-toggle"><input v-model="channelSelection.live" type="checkbox" :disabled="locked" /><span>Παραγγελία από live δειγματισμό</span></label>
+       <p v-if="activeBatch">Η προέλευση έχει αποθηκευτεί στην καταχώριση{{ activeBatch.order_channel === 'unknown' ? ' ως μη καταγεγραμμένη' : '' }}.</p>
+       <p v-else>Επιλέξτε όταν καταχωρίζετε την παραγγελία μαζί με τον πελάτη στον δειγματισμό.</p>
+      </section>
       <section class="sidebar-section summary-section" aria-label="Σύνοψη λίστας"><div class="section-heading"><span class="section-icon"><UiIcon name="clipboard-check" /></span><h2>Σύνοψη λίστας</h2></div><div class="summary-total"><div class="summary-value"><span>Γενικό σύνολο</span><strong v-if="loading" class="inline-skeleton wide"></strong><strong v-else>{{ hasUnpriced ? '—' : money(payload.totalVal || 0) }}</strong><dl class="summary-rows"><div><dt>Προϊόντα</dt><dd><strong v-if="loading" class="inline-skeleton"></strong><strong v-else>{{ items.length }}</strong></dd></div><div><dt>Τεμάχια</dt><dd><strong v-if="loading" class="inline-skeleton"></strong><strong v-else>{{ payload.totalQty || 0 }}</strong></dd></div></dl></div><B2BButton class="submit-list" icon="send" size="lg" :disabled="locked || !items.length || hasInvalid" @click="confirmSubmit">Υποβολή λίστας</B2BButton></div></section>
      </B2BCard>
     </aside>
    </div>
   </template>
   <MatrixModal v-if="matrixOpen" :store="matrix" @close="closeMatrix" @saved="matrixSaved" />
+  <DialogModal :open="removalNoticeOpen" label="Ακυρωμένα είδη" @close="closeRemovalNotice">
+   <section class="removal-notice">
+    <h2>Ακυρωμένα είδη</h2>
+    <p>Οι παρακάτω οδηγοί ή παραλλαγές έχουν ακυρωθεί και αφαιρέθηκαν από τη λίστα σας.</p>
+    <ul class="removal-notice-items">
+     <li v-for="item in payload.removedItems" :key="item.id"><strong v-if="item.sku">{{ item.sku }}</strong><span>{{ item.name }}</span><template v-if="item.partial"><small>Αφαιρέθηκαν μόνο οι ακυρωμένες παραλλαγές. Οι υπόλοιπες επιλογές σας παραμένουν στη λίστα.</small><ul><li v-for="variation in item.variations" :key="variation.id">{{ variation.sku || variation.name }}</li></ul></template></li>
+    </ul>
+    <footer><B2BButton size="lg" autofocus @click="closeRemovalNotice">Ενημερώθηκα</B2BButton></footer>
+   </section>
+  </DialogModal>
   <DialogModal :open="!!confirmation" :label="confirmation?.title || 'Επιβεβαίωση'" @close="!busy && (confirmation = null)"><h2 class="b2b-u-text-lg b2b-u-font-semibold">{{ confirmation?.title }}</h2><p class="b2b-u-my-4 b2b-u-text-sm b2b-u-text-zinc-500">{{ confirmation?.message }}</p><div class="b2b-u-flex b2b-u-justify-end b2b-u-gap-2"><B2BButton variant="outline" :disabled="busy" @click="confirmation = null">Πίσω</B2BButton><B2BButton :variant="confirmation?.danger ? 'danger' : 'primary'" :loading="busy" @click="runConfirmation">{{ confirmation?.label || 'Επιβεβαίωση' }}</B2BButton></div></DialogModal>
   <DialogModal :open="progressOpen" label="Καταχώριση προπαραγγελίας" @close="!submitting && !redirecting && (progressOpen = false)">
    <div class="submission-progress">
@@ -68,8 +89,10 @@
 </template>
 
 <script setup>
-import { ref, computed, watch, provide, onMounted, onUnmounted, useId } from 'vue';
+import { ref, computed, watch, provide, nextTick, onMounted, onUnmounted, useId } from 'vue';
+import { orderChannelSelection } from '../orderChannel.js';
 import { applySavedListPatch, hasConfirmedListQuote } from '../listState.js';
+import { exactCatalogProduct, canSearchCatalog, catalogWithMembership, catalogPanelPlacement, CATALOG_SEARCH_DELAY } from '../catalogSearch.js';
 import B2BButton from './ui/B2BButton.vue';
 import B2BCard from './ui/B2BCard.vue';
 import UiIcon from './UiIcon.vue';
@@ -90,6 +113,7 @@ const items = computed(() => payload.value.items || []), activeBatch = computed(
 const locked = computed(() => busy.value || loading.value || redirecting.value || !!activeBatch.value);
 const hasUnpriced = computed(() => items.value.some(i => i.unpriced)), hasInvalid = computed(() => !hasConfirmedListQuote(payload.value) || items.value.some(i => i.unavailable || i.unpriced));
 const rootId = ref(''), category = ref(''), filter = ref(''), note = ref('');
+const channelSelection = ref(null);
 const roots = computed(() => rootOptions(items.value));
 const categories = computed(() => categoryOptions(items.value, rootId.value));
 const filtered = computed(() => filterListItems(items.value, rootId.value, category.value, filter.value));
@@ -113,36 +137,116 @@ const formatter = computed(() => new Intl.NumberFormat('el-GR', { style: 'curren
 const money = value => formatter.value.format(value);
 let api;
 function client() { return api ||= createListApi(config.ajaxUrl); }
-function showError(e) { error.value = e.message; if (e.status === 401 || e.code === 'account_changed') { payload.value = {}; loaded.value = false; matrixOpen.value = false; } if (e.status === 401) loginRequired.value = true; }
+function showError(e) { error.value = e.message; if (e.status === 401 || e.code === 'account_changed') { payload.value = {}; loaded.value = false; matrixOpen.value = false; removalNoticeOpen.value = false; } if (e.status === 401) loginRequired.value = true; }
 async function load() {
  loading.value = true; error.value = ''; loginRequired.value = false;
- try { payload.value = await client().read('list-data'); loaded.value = true; }
+ try { payload.value = await client().read('list-data'); channelSelection.value = orderChannelSelection(payload.value, channelSelection.value); loaded.value = true; removalNoticeOpen.value = !!payload.value.removedItems?.length; }
  catch (e) { showError(e); } finally { loading.value = false; }
+}
+const removalNoticeOpen = ref(false);
+async function closeRemovalNotice() {
+ if (!removalNoticeOpen.value) return;
+ removalNoticeOpen.value = false;
+ const token = payload.value.removedNoticeToken;
+ try {
+  await client().write('acknowledge-removals', { notice_token: token });
+  if (payload.value.removedNoticeToken === token) { payload.value.removedItems = []; payload.value.removedNoticeToken = ''; }
+ } catch (e) { showError(e); }
 }
 const keyboardKey = 'b2b_list_numeric_keyboard';
 function savedKeyboardMode() { try { return localStorage.getItem(keyboardKey) === '1'; } catch { return false; } }
 const catalogQuery = ref(''), results = ref([]), searching = ref(false), searched = ref(false), searchError = ref(''), numeric = ref(savedKeyboardMode());
 const quickAdd = ref(null), catalogResultsOpen = ref(false);
-function dismissCatalogResults(event) { if (!quickAdd.value?.contains(event.target)) catalogResultsOpen.value = false; }
+const listedProductIds = computed(() => new Set(items.value.map(item => Number(item.id))));
+const catalogResults = computed(() => catalogWithMembership(results.value, listedProductIds.value));
+const catalogPanel = ref(null);
+const catalogUsesPopover = typeof HTMLElement !== 'undefined' && 'showPopover' in HTMLElement.prototype;
+watch(catalogPanel, element => {
+ if (!element) return;
+ positionCatalogResults();
+ if (catalogUsesPopover) {
+  try { element.showPopover({ source: quickAdd.value?.querySelector('input') }); }
+  catch { element.removeAttribute('popover'); }
+ }
+}, { flush: 'post' });
+const catalogSearchRow = ref(null), catalogPanelStyle = ref({}), catalogPlacement = ref('below');
+function positionCatalogResults() {
+ if (!catalogResultsOpen.value || !catalogSearchRow.value) return;
+ const view = window.visualViewport;
+ const viewport = { left: view?.offsetLeft || 0, top: view?.offsetTop || 0, width: view?.width || window.innerWidth, height: view?.height || window.innerHeight };
+ const keyboardOpen = viewport.height < window.innerHeight - 120;
+ const preferSide = window.innerWidth <= 1024 || window.matchMedia('(pointer: coarse)').matches || keyboardOpen;
+ const placement = catalogPanelPlacement(catalogSearchRow.value.getBoundingClientRect(), viewport, preferSide);
+ catalogPlacement.value = placement.mode;
+ catalogPanelStyle.value = { left: placement.left + 'px', top: placement.top + 'px', width: placement.width + 'px', maxHeight: placement.maxHeight + 'px' };
+}
+function showCatalogResults() { catalogResultsOpen.value = canSearchCatalog(catalogQuery.value); positionCatalogResults(); }
+watch(catalogResultsOpen, async open => { if (open) { await nextTick(); positionCatalogResults(); } });
+const catalogEnterHint = ref('');
+function hideCatalogResults() { catalogResultsOpen.value = false; pendingCatalogEnter = false; }
+function insideCatalog(target) { return !!target && (quickAdd.value?.contains(target) || catalogPanel.value?.contains(target)); }
+function catalogFocusOut(event) { if (!insideCatalog(event.relatedTarget)) hideCatalogResults(); }
+function dismissCatalogResults(event) { if (!insideCatalog(event.target)) hideCatalogResults(); }
+function tabIntoCatalog(event) {
+ if (event.shiftKey || catalogPanel.value?.hasAttribute('popover')) return;
+ const button = catalogPanel.value?.querySelector('button');
+ if (button) { event.preventDefault(); button.focus(); }
+}
 watch(numeric, value => { try { localStorage.setItem(keyboardKey, value ? '1' : '0'); } catch { /* Browser storage may be unavailable. */ } });
-let searchTimer, searchController, searchVersion = 0;
-function searchCatalog() {
+let searchTimer, searchController, searchVersion = 0, searchedCatalogQuery = '', pendingCatalogEnter = false;
+function openExactCatalog(query) {
+ const product = exactCatalogProduct(results.value, query);
+ if (product) openMatrix(product.id, true);
+ else catalogEnterHint.value = 'Επιλέξτε προϊόν από τα αποτελέσματα.';
+}
+function enterCatalog(event) {
+ if (event.isComposing || event.repeat || locked.value || matrixOpen.value) return;
+ event.preventDefault();
+ const query = catalogQuery.value.trim();
+ if (!canSearchCatalog(query) || pendingCatalogEnter) return;
+ catalogResultsOpen.value = true;
+ if (searched.value && !searching.value && searchedCatalogQuery === query) openExactCatalog(query);
+ else searchCatalog(true, true);
+}
+function searchCatalog(immediate = false, openOnComplete = false) {
  clearTimeout(searchTimer); searchController?.abort(); const version = ++searchVersion;
+ const query = catalogQuery.value.trim(); pendingCatalogEnter = openOnComplete;
+ catalogEnterHint.value = '';
  results.value = []; searched.value = false; searchError.value = ''; searching.value = false;
- catalogResultsOpen.value = catalogQuery.value.trim().length >= 2;
- if (catalogQuery.value.trim().length < 2) return;
+ catalogResultsOpen.value = canSearchCatalog(query);
+ if (!catalogResultsOpen.value) return;
+ positionCatalogResults();
  searching.value = true;
- searchTimer = setTimeout(async () => {
+ const runSearch = async () => {
   searchController = new AbortController();
-  try { const data = await client().read('search-products', { q: catalogQuery.value.trim() }, searchController.signal); if (version === searchVersion) { results.value = data; searched.value = true; } }
-  catch (e) { if (version === searchVersion && e.name !== 'AbortError') searchError.value = e.message; }
+  try {
+   const data = await client().read('search-products', { q: query }, searchController.signal);
+   if (version !== searchVersion) return;
+   results.value = data; searched.value = true; searchedCatalogQuery = query;
+   const shouldOpen = pendingCatalogEnter; pendingCatalogEnter = false;
+   if (shouldOpen && query === catalogQuery.value.trim() && !locked.value && !matrixOpen.value) openExactCatalog(query);
+  }
+  catch (e) { if (version === searchVersion) { pendingCatalogEnter = false; if (e.name !== 'AbortError') searchError.value = e.message; } }
   finally { if (version === searchVersion) searching.value = false; }
- }, 250);
+ };
+ if (immediate) runSearch(); else searchTimer = setTimeout(runSearch, CATALOG_SEARCH_DELAY);
 }
 const matrix = useMatrixStore(), matrixOpen = ref(false);
-async function openMatrix(id) {
+let matrixFromCatalog = false;
+watch(matrixOpen, async open => {
+ if (open || !matrixFromCatalog) return;
+ matrixFromCatalog = false;
+ await nextTick();
+ const input = quickAdd.value?.querySelector('input');
+ if (!input || matrixOpen.value) return;
+ input.focus({ preventScroll: true });
+ input.setSelectionRange(input.value.length, input.value.length);
+ hideCatalogResults();
+});
+async function openMatrix(id, fromCatalog = false) {
  if (locked.value) return;
- catalogResultsOpen.value = false;
+ matrixFromCatalog = fromCatalog;
+ hideCatalogResults();
  matrix.includeListPatch = true;
  matrix.sessionEndpoint = config.ajaxUrl; matrix.appearance = payload.value.appearance || {};
  matrix.apiEndpoint = config.ajaxUrl; matrixOpen.value = true;
@@ -155,13 +259,13 @@ function closeMatrix() {
  else matrixOpen.value = false;
 }
 function matrixSaved({ listPatch }) {
- try { payload.value = applySavedListPatch(payload.value, listPatch); matrixOpen.value = false; catalogQuery.value = ''; searchCatalog(); }
+ try { payload.value = applySavedListPatch(payload.value, listPatch); matrixOpen.value = false; }
  catch (e) { showError(e); }
 }
 async function mutate(endpoint, params) { await client().write(endpoint, params); if (endpoint === 'cancel-order') progress.value = null; await load(); }
-function confirmEmpty() { confirmation.value = { title: 'Άδειασμα λίστας;', message: 'Θα αφαιρεθούν όλα τα αποθηκευμένα προϊόντα.', label: 'Άδειασμα λίστας', danger: true, action: () => mutate('empty') }; }
+function confirmEmpty() { confirmation.value = { title: 'Άδειασμα λίστας;', message: `Θα αφαιρεθούν όλα τα αποθηκευμένα προϊόντα (${items.value.length}) και οι ποσότητές τους από ολόκληρη τη λίστα, ανεξάρτητα από τα φίλτρα προβολής.`, label: 'Άδειασμα λίστας', danger: true, action: () => mutate('empty') }; }
 function confirmRemove(item) { confirmation.value = { title: 'Αφαίρεση προϊόντος;', message: `${item.sku} · ${item.name}`, label: 'Αφαίρεση', danger: true, action: () => mutate('remove-parent', { parent_id: item.id }) }; }
-function confirmSubmit() { progress.value = null; confirmation.value = { title: 'Υποβολή της λίστας;', message: `${payload.value.totalQty} τεμάχια · Γενικό σύνολο ${money(payload.value.totalVal)}. Μετά την υποβολή θα μεταβείτε στις παραγγελίες σας.`, label: 'Υποβολή', action: submit }; }
+function confirmSubmit() { progress.value = null; const source = channelSelection.value?.canChoose ? ` Προέλευση: ${channelSelection.value.live ? 'Live δειγματισμός' : 'Online'}.` : ''; confirmation.value = { title: 'Υποβολή της λίστας;', message: `${payload.value.totalQty} τεμάχια · Γενικό σύνολο ${money(payload.value.totalVal)}.${source} Μετά την υποβολή θα μεταβείτε στις παραγγελίες σας.`, label: 'Υποβολή', action: submit }; }
 function confirmCancel() { confirmation.value = { title: 'Ακύρωση καταχώρισης;', message: 'Η λίστα και οι ποσότητές σας θα διατηρηθούν για επεξεργασία.', label: 'Ακύρωση καταχώρισης', danger: true, action: () => mutate('cancel-order', { order_id: activeBatch.value.wc_order_id || 0, token: activeBatch.value.batch_token }) }; }
 async function runConfirmation() { const action = confirmation.value?.action; if (!action || busy.value) return; confirmation.value = null; busy.value = true; error.value = ''; try { await action(); } catch (e) { showError(e); } finally { busy.value = false; } }
 const progress = ref(null), progressOpen = ref(false), submitting = ref(false), redirecting = ref(false), submitError = ref('');
@@ -174,7 +278,7 @@ async function submit() {
  let destination = '';
  try {
   if (progress.value?.token) progress.value = await client().write('order-status', { token: progress.value.token, order_id: progress.value.order_id });
-  else progress.value = await client().write('start-order', { customer_note: note.value, quote_version: payload.value.quoteParents ? JSON.stringify(payload.value.quoteParents) : payload.value.quoteVersion });
+  else progress.value = await client().write('start-order', { customer_note: note.value, live_showroom: channelSelection.value?.canChoose && channelSelection.value.live ? '1' : '0', quote_version: payload.value.quoteParents ? JSON.stringify(payload.value.quoteParents) : payload.value.quoteVersion });
   while (!progress.value.complete && progress.value.processed < progress.value.total) {
    const before = progress.value.processed;
    progress.value = await client().write('add-batch', { order_id: progress.value.order_id, token: progress.value.token });
@@ -190,11 +294,16 @@ async function submit() {
  finally { finalizing.value = false; submitting.value = false; busy.value = false; }
 }
 function beforeLeave(event) { if (!redirecting.value && (submitting.value || (matrixOpen.value && matrix.isDirty))) { event.preventDefault(); event.returnValue = ''; } }
-function restore(event) { if (event.persisted) { payload.value = {}; loaded.value = false; matrixOpen.value = false; progress.value = null; progressOpen.value = false; redirecting.value = false; load(); } }
-onMounted(() => { font.value = getComputedStyle(props.container).fontFamily || SYSTEM_FONT; syncRowHeight(); window.addEventListener('resize', syncRowHeight); document.addEventListener('pointerdown', dismissCatalogResults); load(); window.addEventListener('beforeunload', beforeLeave); window.addEventListener('pageshow', restore); });
-onUnmounted(() => { listResizeObserver?.disconnect(); clearTimeout(searchTimer); searchController?.abort(); document.removeEventListener('pointerdown', dismissCatalogResults); window.removeEventListener('resize', syncRowHeight); window.removeEventListener('beforeunload', beforeLeave); window.removeEventListener('pageshow', restore); });
+function restore(event) { if (event.persisted) { payload.value = {}; channelSelection.value = null; loaded.value = false; matrixOpen.value = false; progress.value = null; progressOpen.value = false; redirecting.value = false; load(); } }
+onMounted(() => { font.value = getComputedStyle(props.container).fontFamily || SYSTEM_FONT; syncRowHeight(); window.addEventListener('resize', syncRowHeight); window.addEventListener('resize', positionCatalogResults); window.addEventListener('scroll', positionCatalogResults, true); window.visualViewport?.addEventListener('resize', positionCatalogResults); window.visualViewport?.addEventListener('scroll', positionCatalogResults); document.addEventListener('pointerdown', dismissCatalogResults); load(); window.addEventListener('beforeunload', beforeLeave); window.addEventListener('pageshow', restore); });
+onUnmounted(() => { listResizeObserver?.disconnect(); clearTimeout(searchTimer); searchController?.abort(); ++searchVersion; pendingCatalogEnter = false; document.removeEventListener('pointerdown', dismissCatalogResults); window.removeEventListener('resize', syncRowHeight); window.removeEventListener('resize', positionCatalogResults); window.removeEventListener('scroll', positionCatalogResults, true); window.visualViewport?.removeEventListener('resize', positionCatalogResults); window.visualViewport?.removeEventListener('scroll', positionCatalogResults); window.removeEventListener('beforeunload', beforeLeave); window.removeEventListener('pageshow', restore); });
 </script>
 <style scoped>
+.order-channel-toggle { display: flex; align-items: center; gap: 12px; min-height: 44px; cursor: pointer; color: #334155; font-size: 13px; font-weight: 600; line-height: 1.5; }
+.order-channel-toggle input { flex: 0 0 21px; width: 21px; height: 21px; margin: 0; accent-color: var(--b2b-primary); }
+.order-channel-toggle:has(input:disabled) { cursor: default; opacity: .7; }
+.order-channel-section p { margin: 8px 0 0 !important; color: #64748b; font-size: 12px; line-height: 1.6; }
+@media (max-width: 999px) { .order-channel-section { grid-column: 1 / -1; } }
 .b2b-list { min-height: 400px; }
 .b2b-list { max-width: 80rem; margin-inline: auto; padding: 32px 12px; }
 @media (min-width: 768px) { .b2b-list { padding-inline: 24px; } }
@@ -217,7 +326,7 @@ onUnmounted(() => { listResizeObserver?.disconnect(); clearTimeout(searchTimer);
 .submission-actions { display: flex; justify-content: flex-end; flex-wrap: wrap; gap: 8px; margin-top: 20px; }
 .sr-only { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); }
 .b2b-list { color: #1e293b; }
-.list-top-card { display: grid; grid-template-columns: minmax(0,1fr) minmax(360px, .95fr); align-items: center; gap: 28px; position: relative; z-index: 3; overflow: visible !important; padding: 20px; margin-bottom: 20px; border-color: var(--b2b-primary-border) !important; border-top: 3px solid var(--b2b-primary) !important; }
+.list-top-card { display: grid; grid-template-columns: minmax(0,1fr) minmax(360px, .95fr); align-items: center; gap: 28px; position: relative; z-index: 3; overflow: visible !important; padding: 20px; margin-bottom: 20px; border-color: var(--b2b-primary-border) !important; border-top: 6px solid var(--b2b-primary-soft) !important; }
 .list-hero { display: flex; align-items: center; gap: 15px; min-width: 0; text-align: left; }
 .list-hero-icon, .section-icon { display: grid; place-items: center; flex: 0 0 auto; color: var(--b2b-primary); background: var(--b2b-primary-soft); border: 1px solid var(--b2b-primary-border); border-radius: var(--b2b-radius, 9px); }
 .list-hero-icon { width: 42px; height: 42px; }
@@ -232,10 +341,20 @@ onUnmounted(() => { listResizeObserver?.disconnect(); clearTimeout(searchTimer);
 .quick-add-heading h2 { margin: 0 !important; color: #334155; font-size: 12px; font-weight: 700; }
 .quick-add-heading :deep(svg) { width: 16px; height: 16px; flex-basis: 16px; }
 .quick-add-loading { height: 68px; }
-.catalog-search-results { position: absolute; left: 24px; right: 0; top: calc(100% + 10px); z-index: 5; max-height: 288px; overflow-y: auto; padding: 6px; border: 1px solid var(--b2b-primary-border); border-radius: var(--b2b-radius, 8px); background: #fff; box-shadow: 0 12px 32px #17203320; }
+.catalog-search-results { position: fixed; inset: auto; margin: 0; z-index: 2147483647; display: flex; flex-direction: column; padding: 6px; box-sizing: border-box; border: 1px solid var(--b2b-primary-border); border-radius: var(--b2b-radius, 8px); background: #fff; box-shadow: 0 12px 32px #17203326; }
+.catalog-results-scroll { min-height: 0; overflow-y: auto; overscroll-behavior: contain; }
+.catalog-results-heading { display: flex; align-items: center; justify-content: space-between; gap: 8px; flex: 0 0 auto; padding: 0 4px 4px 8px; border-bottom: 1px solid var(--b2b-primary-border); color: #334155; font-size: 12px; font-weight: 600; }
+.catalog-results-heading > button { display: inline-flex; align-items: center; justify-content: center; width: 40px; height: 40px; padding: 0; margin: 0; border: 0; border-radius: var(--b2b-radius-sm, 4px); color: #64748b; background: transparent; cursor: pointer; }
+.catalog-results-heading > button:hover { color: var(--b2b-primary); background: var(--b2b-primary-soft); }
+.catalog-result-count { margin-left: 4px; color: var(--b2b-primary); }
+.catalog-results-more { flex: 0 0 auto; margin: 0 !important; padding: 8px; border-top: 1px solid var(--b2b-primary-border); color: #64748b; font-size: 11px; line-height: 1.4; }
+.b2b-result { padding: 10px 8px; border-radius: var(--b2b-radius-sm, 4px); }
+.b2b-result:hover, .b2b-result:focus-visible { color: var(--b2b-primary); background: var(--b2b-primary-soft); }
 .catalog-search-status { margin: 0 !important; padding: 12px; color: #64748b; font-size: 12px; }
 .catalog-search-error { color: #be123c; }
-.product-list-card { --list-product-columns: minmax(0,1fr) 80px 126px 104px; border-color: var(--b2b-primary-border) !important; }
+.catalog-in-list { display: inline-flex; margin-top: 5px; padding: 3px 7px; border: 1px solid var(--b2b-primary-border); border-radius: var(--b2b-radius-sm, 4px); background: var(--b2b-primary-soft); color: var(--b2b-primary); font-size: 11px; line-height: 1.4; font-weight: 600; }
+.catalog-variation-sku { display: block; margin-top: 2px; color: #64748b; font-size: 11px; }
+.product-list-card { --list-product-columns: minmax(0,1fr) 70px 116px 116px; --list-product-gap: 12px; border-color: var(--b2b-primary-border) !important; }
 .list-filters { padding: 16px 20px; border-bottom: 1px solid #dce4ee; }
 .section-heading { display: flex; align-items: center; gap: 11px; min-width: 0; }
 .section-icon { width: 36px; height: 36px; }
@@ -255,13 +374,14 @@ onUnmounted(() => { listResizeObserver?.disconnect(); clearTimeout(searchTimer);
 .products-heading .section-icon { width: 30px; height: 30px; background: #fff; }
 .products-heading h2 { color: var(--b2b-primary); }
 .count-pill { display: inline-flex; align-items: center; justify-content: center; min-width: 22px; height: 22px; margin-left: 5px; padding: 0 5px; border-radius: 999px; background: #eef2f7; color: #475569; font-size: 11px; }
-.root-tabs { display: flex; align-items: center; gap: 5px; width: max-content; max-width: 100%; overflow-x: auto; scrollbar-width: thin; margin-bottom: 12px; padding: 3px; border: 1px solid #cdd8e6; border-radius: var(--b2b-radius, 8px); background: #f8fafc; }
+.list-filter-actions { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin-bottom: 12px; }
+.root-tabs { display: flex; align-items: center; gap: 5px; width: max-content; min-width: 0; max-width: 100%; overflow-x: auto; scrollbar-width: thin; padding: 3px; border: 1px solid #cdd8e6; border-radius: var(--b2b-radius, 8px); background: #f8fafc; }
 .root-tabs button { flex: 0 0 auto; min-height: 34px; padding: 5px 12px; border: 1px solid transparent; border-radius: var(--b2b-radius-sm, 6px); background: transparent; color: #475569; font: inherit; font-size: 12px; font-weight: 650; white-space: nowrap; cursor: pointer; }
 .root-tabs button:hover:not(.active) { color: var(--b2b-primary); background: #fff; }
 .root-tabs button.active { border-color: var(--b2b-primary-border); background: #fff; color: var(--b2b-primary); box-shadow: 0 1px 4px rgba(15,23,42,.08); }
 .root-tabs button:focus-visible { outline: 2px solid var(--b2b-primary); outline-offset: 1px; }
-.empty-list-button { color: #dc2626 !important; border-color: #e2e8f0 !important; background: #fff !important; }
-.empty-list-button:hover:not(:disabled) { color: #dc2626 !important; border-color: #fecaca !important; background: #fff1f2 !important; }
+.b2b-list .empty-list-button { flex-shrink: 0; color: #475569 !important; border-color: #cbd5e1 !important; background: #fff !important; }
+.b2b-list .empty-list-button:is(:hover, :focus-visible):not(:disabled):not(.is-disabled) { color: #dc2626 !important; border-color: #dc2626 !important; background: #fff1f2 !important; }
 .filter-toolbar { display: grid; grid-template-columns: minmax(0, 1fr) minmax(260px, .85fr); align-items: stretch; gap: 12px; }
 .filter-controls { display: grid; grid-template-columns: minmax(0, 1fr); grid-template-rows: repeat(2, 44px); gap: 10px; min-width: 0; }
 .list-search-field, .category-select { position: relative; min-width: 0; }
@@ -275,26 +395,24 @@ onUnmounted(() => { listResizeObserver?.disconnect(); clearTimeout(searchTimer);
 .subtotal-body { display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 12px; padding: 10px 13px; }
 .subtotal-counts { display: grid; gap: 3px; color: #64748b; font-size: 11px; }
 .subtotal-body > strong { color: var(--b2b-primary); font-size: clamp(18px, 1.6vw, 22px); line-height: 1; font-variant-numeric: tabular-nums; white-space: nowrap; }
-.product-columns-heading { display: grid; grid-template-columns: var(--list-product-columns); align-items: center; padding: 8px 25px; background: #f8fafc; border-bottom: 1px solid #dce4ee; color: #64748b; font-size: 10px; font-weight: 700; }
-.product-columns-heading > span:nth-child(2) { text-align: center; }
-.product-columns-heading > span:nth-child(3) { padding-right: 12px; text-align: right; }
+.product-columns-heading { display: grid; grid-template-columns: var(--list-product-columns); column-gap: var(--list-product-gap); align-items: center; padding: 8px 25px; background: #f8fafc; border-bottom: 1px solid #dce4ee; color: #64748b; font-size: 10px; font-weight: 700; text-align: center; }
 .product-window { overflow-y: auto; overscroll-behavior-y: auto; scrollbar-width: thin; }
 .product-window:focus-visible { outline: 2px solid var(--b2b-primary); outline-offset: -2px; }
 .b2b-list-virtual-spacer { position: relative; }
 .b2b-list-virtual-row { position: absolute; inset-inline: 0; box-sizing: border-box; }
-.b2b-list-product-row { display: grid; grid-template-columns: var(--list-product-columns); align-items: center; height: calc(100% - 12px); margin: 6px 12px; padding: 10px 12px; border: 1px solid #d5deea; border-radius: var(--b2b-radius, 8px); background: #fff; box-sizing: border-box; overflow: hidden; }
+.b2b-list-product-row { display: grid; grid-template-columns: var(--list-product-columns); column-gap: var(--list-product-gap); align-items: center; height: calc(100% - 12px); margin: 6px 12px; padding: 10px 12px; border: 1px solid #d5deea; border-radius: var(--b2b-radius, 8px); background: #fff; box-sizing: border-box; overflow: hidden; }
 .b2b-list-product-row:hover { border-color: var(--b2b-primary-border); background: #fafbfd; }
 .b2b-list-product-main { display: flex; align-items: center; gap: 12px; min-width: 0; min-height: 0; margin: 0; padding: 0 12px 0 0; }
 .b2b-list-product-column { display: flex; flex-direction: column; justify-content: center; gap: 4px; min-width: 0; min-height: 58px; padding: 0 12px; border-left: 1px solid #e5eaf1; font-variant-numeric: tabular-nums; }
 .b2b-list-product-column strong { color: #172033; font-size: 13px; font-weight: 700; white-space: nowrap; }
 .b2b-list-product-column-label { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); }
 .b2b-list-product-quantity { align-items: center; }
-.b2b-list-product-value { align-items: flex-end; }
+.b2b-list-product-value { align-items: center; }
 .b2b-list-product-media { display: flex; flex: 0 0 auto; align-items: center; gap: 8px; margin: 0; padding: 0; }
 .b2b-list-product-media img, .b2b-list-product-image-empty { display: block; width: 56px; height: 66px; flex: 0 0 56px; margin: 0; padding: 0; object-fit: cover; border: 1px solid #dce4ee; border-radius: var(--b2b-radius, 8px); background: #f8fafc; }
 .b2b-list-product-image-empty { display: grid; place-items: center; color: #94a3b8; }
-.b2b-list-product-remove { display: grid; place-items: center; width: 32px; height: 32px; padding: 0; border: 1px solid #e2e8f0; border-radius: var(--b2b-radius, 8px); background: #fff; color: #dc2626; cursor: pointer; }
-.b2b-list-product-remove:hover:not(:disabled) { color: #dc2626; background: #fff1f2; border-color: #fecaca; }
+.b2b-list-product-remove { display: grid; place-items: center; width: 32px; height: 32px; padding: 0; border: 1px solid #cbd5e1; border-radius: var(--b2b-radius, 8px); background: #fff; color: #475569; cursor: pointer; transition: color .15s ease, background-color .15s ease, border-color .15s ease; }
+.b2b-list-product-remove:is(:hover, :focus-visible):not(:disabled) { color: #dc2626; background: #fff1f2; border-color: #dc2626; }
 .b2b-list-product-remove :deep(svg) { width: 16px; height: 16px; }
 .b2b-list-product-info { min-width: 0; min-height: 0; margin: 0; padding: 0; }
 .b2b-list-product-meta { display: flex; align-items: center; gap: 6px; margin: 0 0 5px !important; color: #64748b; font-size: 11px; }
@@ -304,8 +422,8 @@ onUnmounted(() => { listResizeObserver?.disconnect(); clearTimeout(searchTimer);
 .b2b-list-product-warning { display: flex; align-items: center; gap: 5px; margin: 5px 0 0 !important; color: #a16207; font-size: 11px; }
 .b2b-list-product-warning :deep(svg) { width: 14px; height: 14px; }
 .b2b-list-product-warning span { overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
-.b2b-list-product-edit { align-self: center; justify-self: end; color: #334155 !important; border-color: #cbd5e1 !important; background: #fff !important; }
-.b2b-list-product-edit:hover:not(:disabled) { color: var(--b2b-primary) !important; border-color: var(--b2b-primary-border) !important; background: var(--b2b-primary-soft) !important; }
+.b2b-list .b2b-list-product-edit { align-self: center; justify-self: end; color: #334155 !important; border-color: #cbd5e1 !important; background: #fff !important; }
+.b2b-list .b2b-list-product-edit:is(:hover, :focus-visible):not(:disabled):not(.is-disabled) { color: var(--b2b-primary) !important; border-color: var(--b2b-primary) !important; background: var(--b2b-primary-soft) !important; }
 .list-bottom-bar { display: flex; align-items: center; justify-content: space-between; gap: 12px; flex-wrap: wrap; padding: 12px 20px; border-top: 1px solid #e9edf3; }
 .list-bottom-bar p { margin: 0 !important; color: #64748b; font-size: 11px; }
 .list-loading { display: grid; grid-template-columns: minmax(0, 1fr) 288px; gap: 24px; }
@@ -350,4 +468,15 @@ onUnmounted(() => { listResizeObserver?.disconnect(); clearTimeout(searchTimer);
 @media (max-width: 999px) { .sidebar-card { grid-template-columns: minmax(0,1fr) minmax(0,1fr); } .note-section { border-top: 0 !important; border-left: 1px solid var(--b2b-primary-border); } .summary-section { grid-column: 1 / -1; } .summary-total { display: flex; align-items: center; justify-content: space-between; gap: 18px; } .summary-value { flex: 1; } .submit-list { width: auto; min-width: 210px; margin-top: 0 !important; } .list-loading { grid-template-columns: 1fr; } .loading-aside { display: none; } }
 @media (max-width: 760px) { .list-top-card { grid-template-columns: 1fr; gap: 16px; } .quick-add { padding: 16px 0 0; border-left: 0; border-top: 1px solid var(--b2b-primary-border); } .catalog-search-results { left: 0; } }
 @media (max-width: 620px) { .b2b-list { padding: 16px 10px; } .list-top-card { padding: 16px; margin-bottom: 16px; } .list-hero { gap: 11px; } .list-hero-icon { width: 38px; height: 38px; } .list-hero h1 { font-size: 19px; } .products-heading, .list-filters { padding: 12px 16px; } .sidebar-section { padding: 16px; } .sidebar-section .section-heading { margin: -16px -16px 14px; padding: 12px 16px; } .filter-toolbar, .sidebar-card { grid-template-columns: 1fr; } .note-section { border-left: 0; border-top: 1px solid var(--b2b-primary-border) !important; } .summary-total { display: block; } .submit-list { width: 100%; margin-top: 14px !important; } .root-tabs { width: 100%; } .product-columns-heading { display: none; } .b2b-list-product-row { grid-template-columns: minmax(0,1fr) minmax(0,1.4fr) auto; gap: 6px 0; margin: 6px 10px; padding: 10px; } .b2b-list-product-main { grid-column: 1 / -1; padding-right: 0; gap: 10px; } .b2b-list-product-media { gap: 6px; } .b2b-list-product-column { min-height: 40px; padding: 0 8px; } .b2b-list-product-quantity { align-items: flex-start; border-left: 0; } .b2b-list-product-value { align-items: flex-start; } .b2b-list-product-column-label { position: static; width: auto; height: auto; clip-path: none; color: #64748b; font-size: 10px; } .b2b-list-product-edit { grid-column: 3; } .submission-progress h2 { font-size: 20px; } }
+.removal-notice { display: flex; flex-direction: column; gap: 14px; max-height: min(640px, calc(100dvh - 100px)); }
+.removal-notice h2 { margin: 0; font: inherit; font-size: 20px; font-weight: 700; }
+.removal-notice p { margin: 0; color: #64748b; font-size: 14px; line-height: 1.6; }
+.removal-notice-items { min-height: 0; overflow: auto; margin: 0; padding: 0; list-style: none; }
+.removal-notice-items > li { display: grid; gap: 4px; padding: 12px 0; border-bottom: 1px solid #e4e4e7; overflow-wrap: anywhere; font-size: 14px; }
+.removal-notice-items > li:first-child { padding-top: 0; }
+.removal-notice-items strong { color: var(--b2b-primary); }
+.removal-notice-items small { color: #64748b; font-size: 12px; line-height: 1.5; }
+.removal-notice-items ul { margin: 2px 0 0; padding-left: 20px; font-size: 12px; }
+.removal-notice footer { display: flex; flex-shrink: 0; justify-content: flex-end; }
+.removal-notice footer button { margin: 0 !important; }
 </style>

@@ -1,4 +1,4 @@
-# B2B Order List Matrix 3.2.14
+# B2B Order List Matrix 3.3.0
 
 A WooCommerce catalog matrix and dedicated **Pre-Order List / Cart System** powered by custom normalized database tables, Vue 3, and plugin-scoped CSS.
 
@@ -17,13 +17,35 @@ b2b-preorder-matrix/
   includes/class-b2b-matrix-db.php
   includes/class-b2b-matrix-settings.php
   includes/class-b2b-matrix-catalog.php
+  includes/class-b2b-order-channel.php
   includes/class-b2b-preorder-list.php
   includes/class-b2b-preorder-submission.php
   assets/admin-settings.css
   b2b-matrix/dist/matrix-app.js
   b2b-matrix/dist/matrix-style.css
   README.md
+  LICENSE
+  licenses/vue-MIT.txt
+  licenses/pinia-MIT.txt
 ```
+
+## Build from source
+
+Requires Node.js 22.12+ and npm for the Vue build, plus Python 3.9+ for packaging. WordPress runtime requirements remain PHP 7.4+, WordPress 6.5+ and WooCommerce. Clone this repository and run:
+
+```sh
+git clone https://github.com/JPDdesigners/b2b-preorder-matrix.git
+cd b2b-preorder-matrix/b2b-matrix
+npm ci
+npm test
+npm run build
+cd ..
+python tools/build_release.py
+```
+
+The uploadable ZIP is `releases/b2b-preorder-matrix-3.3.0.zip`, with a single `b2b-preorder-matrix/` root. The packaging script checks every ZIP entry against its source bytes and excludes tests, dependencies and local files. Use `--force` to replace a previously built ZIP. Rebuild Vue after editing `.vue` or JavaScript source; packaging by itself uses the current committed `dist` assets. The automatic GitHub source archive contains the development repository; use the named plugin ZIP attached to the release for WordPress upload.
+
+Own plugin code is licensed under GPL-2.0-or-later; see [LICENSE](LICENSE). Bundled Vue and Pinia retain their MIT licenses, included in `licenses/`.
 
 No Node dependencies, demo HTML, mocks, tests or development server are deployed.
 
@@ -54,26 +76,46 @@ Shortcodes:
 
 The Pre-Order List shortcode (`[b2b_preorder_list]`) powers the customer's draft order review page:
 - **Dual Search Architecture:**
-  - **Quick Add Search (Top Right):** Live catalog search shares the page heading card, with an ABC/123 keyboard button for tablets and barcode scanners. Results open in a dropdown; selecting a product opens the matrix modal. Escape, moving focus away or clicking outside dismisses the dropdown without clearing the query.
+  - **Quick Add Search (Top Right):** Live catalog search shares the page heading card, with an ABC/123 keyboard button for tablets and barcode scanners. On tablets, results open in a panel to the left and slightly above the field when space permits. On narrower screens and desktops the panel uses the available space above or below. It follows `visualViewport` resize/scroll events so the on-screen keyboard does not cover the results. The panel has a close button and its own scrolling area; selecting a product opens the matrix modal. Escape, moving focus away or clicking outside dismisses the panel without clearing the query. Saving or returning from the matrix preserves the query; when opened from Quick Add, focus returns to the search field with the caret at the end and results dismissed, ready to change the last SKU digit. The query is kept only in the current page, not in browser storage.
+  - SKU results come from WooCommerce's existing `wc_product_meta_lookup` table: exact matches first, then prefixes, then other SKU matches and product names. Exact and prefix queries are separate to use the SKU index; wider searches stop when 8 accessible results have been found. Variations are grouped by published parent before the candidate limit, and matching variation SKUs remain visible. No extra index, Flatsome integration or Relevanssi dependency is required. Numeric-only queries start at 4 digits; names and mixed SKUs start at 2 characters, regardless of keyboard toggle. A 250 ms trailing debounce consolidates rapid typing. Result thumbnails use native lazy loading and asynchronous decoding; browsers may preload nearby images.
+  - Enter opens only a unique exact SKU, including a variation SKU mapped to its parent. Enter can start the lookup immediately instead of waiting for the typing debounce. Changing the query, dismissing results or moving focus away cancels pending automatic opening; partial codes and names retain the tap-to-select results. The input has `enterkeyhint="go"` for supported tablet keyboards. ABC/123 changes only the keyboard; names and SKUs remain searchable in either mode.
+  - The results panel is teleported to `body`, preserving the plugin's font and appearance. Supported browsers show it as a non-modal manual popover in the browser's top layer, above theme headers and outside ancestor clipping/stacking contexts. Older browsers use a fixed panel with a high z-index. Outside click, focus moving outside the search/panel, Escape and the close button still dismiss results.
+  - Results display only «Ήδη στη λίστα» and an edit icon for saved products. Membership comes from a reactive set of parent product IDs in the already-loaded list, including additions and removals. Search does not read or calculate list quantities, or query the custom items table. Changes made on another device appear after refreshing the list. Matrix reads and writes continue to validate against the backend.
   - **In-List Filter (Bottom):** Filters only the items currently present in the customer's draft list by title or SKU.
 - **Authentic Matrix Modal:**
-  - Clicking «Αλλαγή» or selecting a product from Quick Add opens `MatrixTable.vue` inside `MatrixModal.vue`, with touch increment, one size-curve editor, price inspection, and live subtotal calculations. On tablets it fills the screen, keeps the save bar at the bottom, and provides a prominent back button and a separate close button.
+  - Clicking «Αλλαγή» or selecting a product from Quick Add opens `MatrixTable.vue` inside `MatrixModal.vue`, with touch increment, one size-curve editor, price inspection, and live subtotal calculations. On every screen size it opens as a full-page editor with a fixed header and save bar, a prominent back button and a separate close button. Desktop content matches the My List maximum width (80rem including 12px side gutters); only the matrix content scrolls. The My List heading card uses a subtle strip in the soft accent color.
   - The parent list scrolls within a fixed-height window and renders only nearby cards. Scrolling continues into the page at either end. No virtualization package is required. The ABC/123 keyboard choice is stored as a browser preference.
   - Saving from My List requests a compact parent summary in the same Save acknowledgement. The server uses the canonical saved quantities and reads catalog details only for that parent. Vue replaces, inserts or removes that row and recalculates totals, brands and facets without another list-data request. The full list loads on page entry; errors and other list actions may still refresh it. Single-product page saves retain their existing acknowledgement.
 - **List filters and totals:**
   - Customer details, the optional order note and the full summary share one sidebar card with three accent section headings and no subtitles. The summary has a dark total panel with an accent border. On tablets the customer and note sections sit side by side; on phones all three stack.
-  - Bordered product rows retain image, brand, title and SKU in the first column, followed by separate quantity and line-value columns and an edit action. The desktop window shows five complete rows; long titles and SKUs truncate with full-text tooltips. On phones the numeric columns move beneath the product details.
+  - Bordered product rows retain image, brand, title and SKU in the first column, followed by separate quantity and line-value columns and an edit action. Desktop headings and numeric values are centered, with a shared column gap keeping the value separate from Edit. The desktop window shows five complete rows; long titles and SKUs truncate with full-text tooltips. On phones the numeric columns move beneath the product details. Delete controls are neutral gray and become red with a soft red background on hover or keyboard focus; Edit uses the active accent color with a soft accent background.
   - Product-row layout classes are namespaced as `b2b-list-product-*`, with explicit internal margins and padding. Theme rules for single-product `.product-main` / `.product-info` no longer enlarge the grid contents or push the product title, image and numeric columns below the card's bounds.
-  - Root product categories appear as tabs on their own row. The subcategory dropdown sits above the in-list search, while the wider filtered subtotal occupies both rows to the right with its own heading and divider. Section headings and borders follow the selected palette and corner style.
+  - Root product categories appear as tabs on their own row, with Empty List on the right above the filtered subtotal. Empty List always applies to the full list and requires confirmation, including when a category or search filter is active. The subcategory dropdown sits above the in-list search, while the wider filtered subtotal occupies both rows to the right with its own heading and divider. Section headings and borders follow the selected palette and corner style.
 - **Sequential Batch Submission:**
+  - On a full My List load, canceled/nonpublished/deleted products and variations are removed in one account-locked bulk delete. A canceled parent removes its selected variations; a canceled variation leaves its valid siblings in place. Totals, filters and quote digests reflect the remaining list. Missing prices, stock availability and access restrictions do not cause automatic deletion. Frozen active submissions retain their snapshot/list until resumed or canceled.
+  - The optional site helper `jpd_get_canceled_items_bulk` is still called once for the selected variation IDs; native WooCommerce existence, type, status and parent checks also work without that helper. A notice journal is stored before deletion so failed deletion can retry and lost responses/refreshes retain the notification. A scrollable native modal lists the removed styles, identifies partial removals, and closes through «Ενημερώθηκα», Escape or a backdrop tap. Closing acknowledges the matching notice token through a nonce-protected POST; an old tab cannot dismiss newer cancellations. Notices are scoped by account and site. Hard-deleted products without recoverable catalog metadata use their product ID as a fallback label.
   - Large B2B orders (1,000–3,000+ line items) bypass the heavy standard WooCommerce cart/checkout.
-  - When the customer clicks «Υποβολή λίστας», orders are created in chunks of 150 items (`wp_b2b_preorder_batches`) with an interactive progress modal and retry mechanism directly into a native WooCommerce order (`b2b-submitted`). Completion redirects to My Account → Orders, where the site's existing PDF/print action remains available per order.
+  - When the customer clicks «Υποβολή λίστας», orders are created in chunks of 150 items (`wp_b2b_preorder_batches`) with an interactive progress modal and retry mechanism directly into a native WooCommerce order. The temporary shell remains `b2b-draft` while building; a new finalized order becomes `processing` (`wc-processing` in storage). Completion redirects to My Account → Orders, where the site's existing PDF/print action remains available per order. Historical custom order statuses remain registered for existing orders.
+  - The `b2b-draft → processing` transition is registered with WooCommerce's transactional email pipeline and triggers its existing New Order (admin) and Processing Order (customer) email classes. Their enabled settings, recipients, templates and deferred email configuration remain in control. No manual duplicate send is added; retrying finalization after saving `processing` completes list cleanup without repeating the transition. Existing already-submitted legacy batches retain their historical status on recovery. Email delivery must still be verified with the site's real mail configuration.
+  - Processing ordinarily invokes WooCommerce stock reduction. Filters limited to orders created via `b2b-preorder` with a batch token preserve this plugin's existing policy of not reducing stock, including direct stock-reduction calls. Ordinary WooCommerce orders keep their normal stock behavior.
   - The server compares the list's product IDs, variation IDs, quantities and prices with the version the customer confirmed. A change rejects submission before creating an order and refreshes the list for review.
   - The list includes an independent confirmation digest per parent. Save replaces only that parent's digest; submission validates the complete manifest against current server quantities and prices. This preserves stale-price and other-tab change detection without rebuilding the full list after every matrix save. Legacy single-digest callers remain supported.
   - Each retryable chunk checks only its variation IDs with one read-only SQL lookup. New order lines are still saved through WooCommerce CRUD; finalization verifies the complete order once.
   - The submission dialog has an accent status pill, keep-open instructions and batch progress. Once every variation is written it switches to an indeterminate finalization state: «Περιμένετε, ολοκληρώνουμε την παραγγελία και υπολογίζουμε τα σύνολα…». The finalization request allows up to three minutes of client-side waiting, subject to the hosting server's own limits. The dialog remains open through navigation and disappears with the departing page; there is no completion prompt or unload warning. Close/Continue controls appear only after failure; retries resume the existing batch and can retry finalization without repeating completed chunks.
 - **Customer Identity & Billing:**
   - Displays Company (Επωνυμία) from `billing_last_name`, VAT Number (ΑΦΜ) from `billing_first_name`, and email from `billing_email`, with the older `billing_company`/`billing_vat` fields as fallbacks.
+
+## Order origin — 3.3.0
+
+My List shows **Παραγγελία από live δειγματισμό** only to a current user with `manage_woocommerce`, or a switched customer whose original User Switching user has that capability and a valid authenticated original-user cookie. A direct manager defaults to unchecked; a switched seller defaults to checked. Ordinary customers never see the field and cannot forge a live order or seller ID. The checkbox can be changed before submitting; refreshes preserve the choice for the same account.
+
+New My List submissions store `_jpd_order_channel` (`live` or `online`) using WooCommerce order CRUD. Staff submissions also store `_jpd_order_actor_id`, identifying the authenticated original seller; this actor remains recorded even when staff selects online. The server captures both values with the first batch snapshot, before order creation. Repeated requests, interrupted creation and resuming a batch preserve them. Order emails and the processing status continue through the existing workflow. No ACF, cron or analytics extension is required.
+
+Both HPOS and legacy Orders screens have a **Προέλευση** column (including the seller when available) and an **Όλες οι προελεύσεις** filter with live, online and unknown options. Existing orders, legacy unfinished batches and orders created by other checkout/import tools without this metadata remain **Μη καταγεγραμμένη προέλευση**. They are never automatically counted as online. An authorized order editor can correct the channel in the order details, including mark it unknown again; an internal order note records the previous/new channel and editor. Corrections preserve the original submitting seller. Uninstall retains order origin history.
+
+For CSV: filter Orders, select the desired orders, then choose **Εξαγωγή προέλευσης (CSV)** from bulk actions. This exports only the selected orders (up to 1,000 per request), with internal order ID, displayed order number, creation date, status, customer ID/company, saved order total/currency, channel code/label, seller ID/name. The UTF-8 BOM supports Greek text; spreadsheet formula cells are treated as text. Totals come from the order, not current product prices. The CSV contains no product line items or photographs; match `order_id` to another order export if needed. Other exporters can use the two canonical metadata keys, but adding them to a third-party export template depends on that exporter. Filtering admin Orders does not add a WooCommerce Analytics report. Filter/CSV results include each order's status; exclude void/draft/cancelled orders according to the revenue calculation you need.
+
+The local `/tests/list.html?staff&two` and `?switched&two` fixtures exercise the two defaults; omit either flag to test a customer. `?switched&two&retry` tests frozen source after interrupted submission. Backend contracts cover verified switching, forged fields, snapshot recovery, corrections/notes, nested admin filter composition, selected CSV access and saved totals. Actual WordPress/WooCommerce HPOS and legacy admin integration still requires an upload test on the shop.
 
 ## Catalog and private data
 

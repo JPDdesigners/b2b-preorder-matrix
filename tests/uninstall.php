@@ -9,8 +9,10 @@ class Fake_WPDB_Uninstall {
 
 $wpdb = new Fake_WPDB_Uninstall();
 $deleted_options = [];
+$deleted_metadata = [];
 function is_multisite() { return false; }
 function delete_option( $name ) { $GLOBALS['deleted_options'][] = $name; }
+function delete_metadata( ...$args ) { $GLOBALS['deleted_metadata'][] = $args; }
 
 require __DIR__ . '/../uninstall.php';
 
@@ -25,4 +27,5 @@ if ( $deleted_options !== [
     'b2b_matrix_catalog_generation',
 ] ) { throw new Exception( 'Uninstall did not remove only plugin settings.' ); }
 
-echo "PASS uninstall drops only plugin tables and options\n";
+if ( $deleted_metadata !== [ [ 'user', 0, '_b2b_matrix_removed_items_' . md5( 'wp_' ), '', true ] ] ) { throw new Exception( 'Uninstall must remove only its cancellation notice user metadata, preserving order history.' ); }
+echo "PASS uninstall drops only plugin tables, options and cancellation notices; preserves order metadata\n";

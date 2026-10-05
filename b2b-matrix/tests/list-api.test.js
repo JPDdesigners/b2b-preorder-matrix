@@ -33,3 +33,27 @@ test('HTTP 200 failure and malformed responses never acknowledge a write', async
 test('foreign endpoint is rejected before credentials are sent', () => {
  assert.throws(() => createListApi('https://other.test/ajax', () => { throw new Error('must not fetch'); }, origin));
 });
+
+test('origin choice is included only with authenticated start-order and no client seller id', async () => {
+ const calls = [];
+ const api = createListApi('/ajax', async (url, options) => { calls.push({ url, options }); return ok({ user_id: 7, nonce: 'fresh' }); }, origin);
+ await api.read('list-data'); await api.write('start-order', { live_showroom: '1' });
+ const body = calls[2].options.body;
+ assert.equal(body.get('action'), 'b2b_start_order'); assert.equal(body.get('live_showroom'), '1');
+ assert.equal(body.get('expected_user_id'), '7'); assert.equal(body.get('security'), 'fresh');
+ assert.equal(body.has('actor_id'), false);
+});
+
+test('cancellation acknowledgement sends its notice token with fresh nonce and account identity', async () => {
+ const calls = [];
+ const api = createListApi('/ajax', async (url, options) => {
+  calls.push({ url, options }); return ok({ user_id: 7, nonce: 'fresh' });
+ }, origin);
+ await api.read('list-data'); await api.write('acknowledge-removals', { notice_token: 'notice-2' });
+ const body = calls[2].options.body;
+ assert.equal(calls[2].options.method, 'POST');
+ assert.equal(body.get('action'), 'b2b_acknowledge_removed_items');
+ assert.equal(body.get('notice_token'), 'notice-2');
+ assert.equal(body.get('security'), 'fresh');
+ assert.equal(body.get('expected_user_id'), '7');
+});

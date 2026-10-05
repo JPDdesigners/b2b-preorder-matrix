@@ -20,6 +20,8 @@ Thumbs.db
 # Local release archives, screenshots, old applications and work notes
 /releases/
 /artifacts/
+/standalone/
+/github-repos/
 /all vue apps/
 /agent.md
 /agent-v2.0-history.md

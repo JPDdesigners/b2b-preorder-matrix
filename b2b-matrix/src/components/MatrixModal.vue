@@ -1,5 +1,5 @@
 <template>
-  <DialogModal open wide tablet-fullscreen label="Επεξεργασία προϊόντος" @close="$emit('close')">
+  <DialogModal open fullscreen label="Επεξεργασία προϊόντος" @close="$emit('close')">
     <div class="b2b-matrix-modal-dialog">
       <!-- Modal Header -->
       <div class="b2b-matrix-modal-header">
@@ -47,7 +47,7 @@
             <!-- Footer of MatrixTable -->
             <footer class="matrix-footer">
               <div class="order-summary">
-                <span class="summary-label">Σύνολο επιλογής · ενδεικτική αξία</span>
+                <span class="summary-label">Σύνολο επιλογής · συνολίκη αξία</span>
                 <div v-if="store.ready" class="summary-numbers">
                   <strong>{{ store.totalQty }} <small>τεμ.</small></strong>
                   <span class="summary-divider"></span>
@@ -142,28 +142,17 @@ async function handleSave() {
 </script>
 
 <style scoped>
-.b2b-matrix-modal-backdrop {
-  position: fixed;
-  inset: 0;
-  background: rgba(15, 23, 42, 0.75);
-  backdrop-filter: blur(5px);
-  z-index: 999999;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  padding: 16px;
-}
-
 .b2b-matrix-modal-dialog {
+  box-sizing: border-box;
   background: #ffffff;
-  border-radius: var(--b2b-radius-lg, 14px);
-  box-shadow: 0 25px 60px -12px rgba(0, 0, 0, 0.35);
   width: 100%;
-  max-height: calc(100dvh - 48px);
+  max-width: calc(80rem - 24px);
+  flex: 1;
+  min-height: 0;
   display: flex;
   flex-direction: column;
   overflow: hidden;
-  border: 1px solid #e2e8f0;
+  border-inline: 1px solid #e2e8f0;
 }
 .modal-heading { display: flex; align-items: center; gap: 18px; min-width: 0; }
 .modal-heading > span { color: #64748b; font-size: 12px; font-weight: 600; }
@@ -202,25 +191,39 @@ async function handleSave() {
 }
 
 .b2b-matrix-modal-body {
-  overflow-y: auto;
+  display: flex;
+  min-height: 0;
+  overflow: hidden;
   flex: 1;
-  padding: 16px;
-  background: #f8fafc;
+  padding: 0;
+  background: #ffffff;
 }
 
-/* Inherit app wrapper styling from App.vue */
 .b2b-matrix-app {
+  display: flex;
+  flex-direction: column;
+  flex: 1;
+  min-height: 0;
+  width: 100%;
   color: #0f172a;
   background: #fff;
-  border: 1px solid #d4d4d8;
-  border-radius: var(--b2b-radius-lg, 12px);
+  border: 0;
+  border-radius: 0;
   margin: 0;
   overflow: hidden;
   font-family: var(--b2b-font, inherit);
-  box-shadow: 0 1px 3px 0 rgba(0, 0, 0, 0.04), 0 8px 24px -4px rgba(0, 0, 0, 0.07);
   font-variant-numeric: tabular-nums;
   box-sizing: border-box;
 }
+.b2b-matrix-app :deep(.matrix-table-outer) {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  overscroll-behavior-y: contain;
+}
+.b2b-matrix-app > .loading-state,
+.b2b-matrix-app > .empty-state { overflow-y: auto; }
+.unavailable-notice { flex-shrink: 0; }
 
 .b2b-matrix-app :deep(table) {
   border: 0 !important;
@@ -240,6 +243,8 @@ async function handleSave() {
 }
 
 .matrix-footer {
+  flex: 0 0 auto;
+  box-shadow: 0 -4px 16px rgba(15,23,42,.06);
   background: #f8fafc;
   padding: 22px 24px;
   display: flex;
@@ -375,14 +380,11 @@ async function handleSave() {
   line-height: 1.4;
 }
 @media (max-width: 1024px) {
-  .b2b-matrix-modal-dialog { flex: 1; min-height: 0; max-height: none; border: 0; border-radius: 0; box-shadow: none; }
   .b2b-matrix-modal-header { padding: 10px 16px; }
-  .b2b-matrix-modal-body { display: flex; min-height: 0; padding: 0; overflow: hidden; }
-  .b2b-matrix-app { display: flex; flex-direction: column; flex: 1; min-height: 0; width: 100%; border: 0; border-radius: 0; box-shadow: none; }
-  .b2b-matrix-app :deep(.matrix-table-outer) { flex: 1; min-height: 0; overflow-y: auto; overscroll-behavior-y: contain; }
-  .matrix-footer { flex: 0 0 auto; padding: 12px 16px; box-shadow: 0 -4px 16px rgba(15,23,42,.06); }
+  .matrix-footer { padding: 12px 16px; }
 }
 @media (max-width: 600px) {
+  .b2b-matrix-modal-dialog { border: 0; }
   .modal-heading > span { display: none; }
   .b2b-matrix-modal-header { padding: 8px 10px; }
   .matrix-footer { gap: 10px; padding: 10px; }

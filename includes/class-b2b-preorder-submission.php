@@ -3,6 +3,30 @@ if ( ! defined( 'ABSPATH' ) ) { exit; }
 
 /** Resumable preorder snapshots. No cart, payment, tax, stock or checkout calls. */
 class B2B_Preorder_Submission {
+    const PROCESSING_EMAIL_ACTION = 'woocommerce_order_status_b2b-draft_to_processing';
+
+    public static function email_actions( $actions ) {
+        $actions[] = self::PROCESSING_EMAIL_ACTION;
+        return array_values( array_unique( $actions ) );
+    }
+    // Keep WooCommerce's templates, settings, recipients and deferred email queue.
+    public static function processing_emails( $emails ) {
+        foreach ( [ 'WC_Email_New_Order', 'WC_Email_Customer_Processing_Order' ] as $class ) {
+            if ( isset( $emails[ $class ] ) && is_callable( [ $emails[ $class ], 'trigger' ] ) ) {
+                add_action( self::PROCESSING_EMAIL_ACTION . '_notification', [ $emails[ $class ], 'trigger' ], 10, 2 );
+            }
+        }
+        return $emails;
+    }
+    private static function is_preorder( $order ) {
+        return $order instanceof WC_Order && $order->get_created_via() === 'b2b-preorder' && $order->get_meta( '_b2b_batch_token' );
+    }
+    public static function reduce_order_stock( $reduce, $order_id ) {
+        return self::is_preorder( wc_get_order( $order_id ) ) ? false : $reduce;
+    }
+    public static function can_reduce_order_stock( $reduce, $order ) {
+        return self::is_preorder( $order ) ? false : $reduce;
+    }
     public static function quote_version( $items ) {
         $rows = array_map( static fn( $item ) => [ (int) $item['product_id'], (int) $item['variation_id'], (int) $item['qty'], (string) $item['price'] ], $items );
         usort( $rows, static fn( $a, $b ) => $a[1] <=> $b[1] );
@@ -46,10 +70,10 @@ class B2B_Preorder_Submission {
         if ( ! is_user_logged_in() || (int) $uid !== get_current_user_id() ) { return self::error( 'Συνδεθείτε στον λογαριασμό σας.', 'forbidden', 403 ); }
         return B2B_Matrix_API::check_read_permissions();
     }
-    public static function start( $uid, $note = '', $expected_quote = null ) {
+    public static function start( $uid, $note = '', $expected_quote = null, $live = null ) {
         $allowed = self::authorized( $uid );
         if ( is_wp_error( $allowed ) ) { return $allowed; }
-        return B2B_Matrix_DB::with_user_lock( $uid, function() use ( $uid, $note, $expected_quote ) {
+        return B2B_Matrix_DB::with_user_lock( $uid, function() use ( $uid, $note, $expected_quote, $live ) {
             $batch = B2B_Matrix_DB::get_active_batch( $uid );
             if ( $batch && ! empty( $batch['wc_order_id'] ) ) { return self::progress( $batch ); }
             if ( ! $batch ) {
@@ -72,7 +96,7 @@ class B2B_Preorder_Submission {
                 if ( $expected_quote !== null && ! self::matches_quote( $items, $expected_quote ) ) {
                     return self::error( 'Η λίστα ή οι τιμές άλλαξαν. Ελέγξτε το νέο γενικό σύνολο και υποβάλετε ξανά.', 'list_changed' );
                 }
-                $token = B2B_Matrix_DB::create_batch( $uid, count( $items ), [ 'items' => $items, 'note' => sanitize_textarea_field( $note ) ] );
+                $token = B2B_Matrix_DB::create_batch( $uid, count( $items ), [ 'items' => $items, 'note' => sanitize_textarea_field( $note ), 'origin' => B2B_Order_Channel::capture( $live ) ] );
                 if ( is_wp_error( $token ) ) { return $token; }
                 $batch = B2B_Matrix_DB::get_batch( $token );
             }
@@ -93,6 +117,7 @@ class B2B_Preorder_Submission {
                 $order->set_address( $address, 'billing' );
                 $order->update_meta_data( '_b2b_batch_token', $batch['batch_token'] );
                 $order->update_meta_data( '_b2b_indicative_totals', 'yes' );
+                B2B_Order_Channel::apply_snapshot( $order, $snapshot );
                 if ( function_exists( 'jpd_get_active_season' ) ) { $order->update_meta_data( '_jpd_season', jpd_get_active_season() ); }
                 if ( ! $order->save() ) { return B2B_Matrix_DB::db_error(); }
             }
@@ -102,11 +127,13 @@ class B2B_Preorder_Submission {
     }
     private static function progress( $batch ) {
         $complete = $batch['status'] === 'complete';
+        $snapshot = json_decode( $batch['snapshot'] ?? '', true );
         $order = ! empty( $batch['wc_order_id'] ) ? wc_get_order( $batch['wc_order_id'] ) : null;
         return [
             'order_id' => (int) ( $batch['wc_order_id'] ?? 0 ), 'token' => $batch['batch_token'],
             'total' => (int) $batch['total_items'], 'processed' => (int) $batch['processed_items'],
             'status' => $batch['status'], 'complete' => $complete,
+            'order_channel' => $snapshot['origin']['channel'] ?? 'unknown',
             'percent' => $batch['total_items'] ? (int) floor( 100 * $batch['processed_items'] / $batch['total_items'] ) : 0,
             'redirect' => $complete && $order ? wc_get_account_endpoint_url( 'orders' ) : '',
         ];
@@ -153,7 +180,7 @@ class B2B_Preorder_Submission {
                 return self::progress( B2B_Matrix_DB::get_batch( $token ) );
             }
             if ( ! $order ) { return self::error( 'Η καταχώριση δεν έχει ξεκινήσει. Δοκιμάστε ξανά.' ); }
-            if ( ! in_array( $order->get_status(), [ 'b2b-draft', 'b2b-submitted' ], true ) ) { return self::error( 'Η κατάσταση της παραγγελίας άλλαξε. Επικοινωνήστε με το κατάστημα.' ); }
+            if ( ! in_array( $order->get_status(), [ 'b2b-draft', 'processing', 'b2b-submitted' ], true ) ) { return self::error( 'Η κατάσταση της παραγγελίας άλλαξε. Επικοινωνήστε με το κατάστημα.' ); }
             $snapshot = json_decode( $batch['snapshot'] ?? '', true );
             $items = $snapshot['items'] ?? [];
             if ( ! $items || count( $items ) !== (int) $batch['total_items'] ) { return self::error( 'Ακυρώστε την παλιά καταχώριση και ξεκινήστε νέα υποβολή.', 'legacy_batch' ); }
@@ -198,9 +225,11 @@ class B2B_Preorder_Submission {
                 if ( abs( (float) $item->get_total() - $line ) > 0.00001 ) { return self::error( 'Η αξία μιας γραμμής άλλαξε.', 'snapshot_mismatch' ); }
                 $total += $line;
             }
-            if ( $order->get_status() !== 'b2b-submitted' ) {
+            // A retry after saving the order must not repeat the status/email transition.
+            // Old already-submitted batches keep their existing order status on recovery.
+            if ( ! in_array( $order->get_status(), [ 'processing', 'b2b-submitted' ], true ) ) {
                 $order->set_total( $total );
-                $order->set_status( 'b2b-submitted' );
+                $order->set_status( 'processing' );
                 if ( ! $order->save() ) { return B2B_Matrix_DB::db_error(); }
             }
             $done = B2B_Matrix_DB::complete_batch( $uid, $token );

@@ -2,14 +2,21 @@
 /**
  * Plugin Name: B2B Pre-Order Matrix API
  * Description: Private pre-order quantities and a cache-safe Vue matrix for WooCommerce.
- * Version: 3.2.14
+ * Version: 3.3.0
  * Requires at least: 6.5
  * Requires PHP: 7.4
  * Requires Plugins: woocommerce
+ * License: GPL-2.0-or-later
+ * License URI: https://www.gnu.org/licenses/old-licenses/gpl-2.0.html
  */
 if ( ! defined( 'ABSPATH' ) ) { exit; }
-if ( ! defined( 'B2B_MATRIX_VERSION' ) ) { define( 'B2B_MATRIX_VERSION', '3.2.14' ); }
+if ( ! defined( 'B2B_MATRIX_VERSION' ) ) { define( 'B2B_MATRIX_VERSION', '3.3.0' ); }
 if ( ! defined( 'B2B_MATRIX_PLUGIN_FILE' ) ) { define( 'B2B_MATRIX_PLUGIN_FILE', __FILE__ ); }
+add_action( 'before_woocommerce_init', static function() {
+    if ( class_exists( '\\Automattic\\WooCommerce\\Utilities\\FeaturesUtil' ) ) {
+        \Automattic\WooCommerce\Utilities\FeaturesUtil::declare_compatibility( 'custom_order_tables', B2B_MATRIX_PLUGIN_FILE, true );
+    }
+} );
 
 require_once __DIR__ . '/includes/class-b2b-matrix-db.php';
 B2B_Matrix_DB::init();
@@ -17,6 +24,8 @@ require_once __DIR__ . '/includes/class-b2b-matrix-settings.php';
 B2B_Matrix_Settings::init();
 require_once __DIR__ . '/includes/class-b2b-matrix-catalog.php';
 B2B_Matrix_Catalog::init();
+require_once __DIR__ . '/includes/class-b2b-order-channel.php';
+B2B_Order_Channel::init();
 require_once __DIR__ . '/includes/class-b2b-preorder-list.php';
 B2B_Preorder_List::init();
 

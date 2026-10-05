@@ -18,20 +18,43 @@ class WP_Error {
     function get_error_data() { return $this->data; }
 }
 class JsonExit extends Exception { public $body, $status; function __construct( $body, $status ) { $this->body = $body; $this->status = $status; } }
-function add_action( $name, $callback, $priority = 10 ) { $GLOBALS['hooks'][ $name ] = $callback; $GLOBALS['hook_priorities'][ $name ] = $priority; }
+function add_action( $name, $callback, $priority = 10, $accepted_args = 1 ) {
+    $GLOBALS['hooks'][ $name ] = $callback; $GLOBALS['hook_priorities'][ $name ] = $priority;
+    $GLOBALS['action_callbacks'][ $name ] = $GLOBALS['action_callbacks'][ $name ] ?? [];
+    foreach ( $GLOBALS['action_callbacks'][ $name ] as $registered ) { if ( $registered[0] === $callback ) { return; } }
+    $GLOBALS['action_callbacks'][ $name ][] = [ $callback, $accepted_args ];
+}
 function add_filter( $name, $callback, ...$rest ) { add_action( $name, $callback ); }
 function add_shortcode( $name, $callback ) { add_action( $name, $callback ); }
 function is_wp_error( $v ) { return $v instanceof WP_Error; }
 function is_user_logged_in() { return $GLOBALS['logged_in']; }
 function get_current_user_id() { return $GLOBALS['logged_in'] ? 7 : 0; }
+class WP_User { public $ID, $display_name; function __construct( $id ) { $this->ID = $id; $this->display_name = $id === 19 ? 'Seller' : 'Admin'; } }
+class user_switching {
+    static function get_old_user() { return $GLOBALS['old_user'] ?? false; }
+    static function authenticate_old_user( $user ) { return ! empty( $GLOBALS['old_authenticated'] ); }
+}
+function current_user_can( $cap, $id = null ) { return ! empty( $GLOBALS['manager'] ) && ( $cap === 'manage_woocommerce' || ( $cap === 'edit_shop_order' && $id !== ( $GLOBALS['denied_order_id'] ?? null ) ) ); }
+function user_can( $user, $cap ) { return $cap === 'manage_woocommerce' && in_array( $user->ID, $GLOBALS['manager_ids'] ?? [], true ); }
+function get_current_screen() { return (object) [ 'id' => $GLOBALS['screen_id'] ?? '' ]; }
+function is_admin() { return ! empty( $GLOBALS['is_admin'] ); }
+function selected( $a, $b, $echo = true ) { $value = $a === $b ? ' selected="selected"' : ''; if ( $echo ) echo $value; return $value; }
+function esc_html( $value ) { return htmlspecialchars( (string) $value, ENT_QUOTES, 'UTF-8' ); }
+function wp_nonce_field( $action, $field ) { echo '<input name="' . $field . '" value="' . $action . '" />'; }
+function wp_die( $message, $title = '', $args = [] ) { throw new RuntimeException( 'wp_die: ' . $message ); }
+function check_admin_referer( $action ) { $GLOBALS['checked_admin_action'] = $action; if ( $action !== ( $GLOBALS['admin_nonce_action'] ?? '' ) ) { wp_die( 'Invalid admin nonce' ); } }
 function apply_filters( $hook, $value, ...$rest ) { return $hook === 'b2b_matrix_user_can_access' ? $GLOBALS['access'] : ( $hook === 'b2b_matrix_product_can_access' ? $GLOBALS['product_access'] : $value ); }
-function wp_verify_nonce( $nonce, $action ) { return $nonce === 'valid' && $action === 'wp_rest'; }
+function wp_verify_nonce( $nonce, $action ) { return ( $nonce === 'valid' && $action === 'wp_rest' ) || ( strpos( $action, 'b2b_order_channel_' ) === 0 && $nonce === $action ); }
 function wp_create_nonce( $action ) { return 'valid'; }
 function check_ajax_referer( $action, $field, $die ) { return wp_verify_nonce( $_POST[ $field ] ?? null, $action ); }
 function nocache_headers() {}
-function do_action( ...$args ) {}
+function do_action( $name, ...$args ) { foreach ( $GLOBALS['action_callbacks'][ $name ] ?? [] as $registered ) { call_user_func_array( $registered[0], array_slice( $args, 0, $registered[1] ) ); } }
 function rest_ensure_response( $data ) { return $data; }
 function wc_get_product( $id ) { return $GLOBALS['products'][ $id ] ?? false; }
+function jpd_get_canceled_items_bulk( $ids ) {
+    $GLOBALS['jpd_requested_ids'][] = $ids;
+    return array_values(array_intersect($ids, $GLOBALS['jpd_cancelled_ids'] ?? []));
+}
 function post_password_required( $id ) { return $GLOBALS['password_required']; }
 function taxonomy_exists( $tax ) { return true; }
 function get_term_by( $field, $value, $tax ) { return (object) [ 'name' => strtoupper( $value ) ]; }
@@ -67,14 +90,15 @@ function get_user_meta( $user, $key = '', $single = false ) { return $key === ''
 function update_user_meta( $user, $key, $value ) {
     $GLOBALS['write_count']++;
     if ( $GLOBALS['write_failure'] ) { return false; }
-    $GLOBALS['meta'][ $user ][ $key ] = $value;
+    $GLOBALS['meta'][ $user ][ $key ] = wp_unslash( $value );
     return true;
 }
 function delete_user_meta( $user, $key ) {
     unset( $GLOBALS['meta'][ $user ][ $key ] );
     return true;
 }
-function wp_unslash( $value ) { return is_array( $value ) ? array_map( 'wp_unslash', $value ) : stripslashes( $value ); }
+function wp_unslash( $value ) { return is_array( $value ) ? array_map( 'wp_unslash', $value ) : ( is_string( $value ) ? stripslashes( $value ) : $value ); }
+function wp_slash( $value ) { return is_array( $value ) ? array_map( 'wp_slash', $value ) : ( is_string( $value ) ? addslashes( $value ) : $value ); }
 function wp_send_json_success( $data, $status = 200 ) { throw new JsonExit( [ 'success' => true, 'data' => $data ], $status ); }
 function wp_send_json_error( $data, $status = 400 ) { throw new JsonExit( [ 'success' => false, 'data' => $data ], $status ); }
 function wc_get_product_terms( $id, $tax, $args = [] ) { return [ (object) [ 'term_id' => 1, 'name' => 'Joyce', 'slug' => 'joyce' ] ]; }
@@ -82,7 +106,7 @@ function wp_get_object_terms( $ids, $tax, $args = [] ) { return [ (object) [ 'ob
 function get_ancestors( $term_id, $tax, $type = 'taxonomy' ) { return [ 1 ]; }
 function get_term( $term_id, $tax ) { return (object) [ 'term_id' => $term_id, 'name' => $term_id === 1 ? 'Joyce' : 'Baby Boy', 'slug' => $term_id === 1 ? 'joyce' : 'baby-boy' ]; }
 function get_term_meta( $id, $key, $single = true ) { return ''; }
-function get_userdata( $user_id ) { return (object) [ 'ID' => $user_id, 'user_email' => 'test@b2b.test', 'display_name' => 'B2B Client' ]; }
+function get_userdata( $user_id ) { return (object) [ 'ID' => $user_id, 'user_email' => 'test@b2b.test', 'display_name' => $user_id === 19 ? 'Seller' : 'B2B Client' ]; }
 function sanitize_title( $t ) { return strtolower( preg_replace( '/[^a-zA-Z0-9_-]/', '', (string) $t ) ); }
 function sanitize_textarea_field( $t ) { return trim( (string) $t ); }
 function sanitize_text_field( $t ) { return trim( (string) $t ); }
@@ -104,11 +128,13 @@ class WC_Order_Item_Product {
     function get_variation_id() { return $this->product->get_id(); }
 }
 class WC_Order {
-    public $id = 0, $customer_id, $status = 'pending', $meta = [], $items = [], $addresses = [], $total;
+    public $id = 0, $customer_id, $status = 'pending', $meta = [], $items = [], $addresses = [], $total, $created_via = '', $transitions = [];
+    private $saved_status = 'pending';
     function get_id() { return $this->id; }
     function get_customer_id() { return $this->customer_id; }
     function set_customer_id( $uid ) { $this->customer_id = $uid; }
-    function set_created_via( $v ) {}
+    function set_created_via( $v ) { $this->created_via = $v; }
+    function get_created_via() { return $this->created_via; }
     function set_currency( $v ) {}
     function set_prices_include_tax( $v ) {}
     function get_status() { return $this->status; }
@@ -117,11 +143,28 @@ class WC_Order {
     function set_customer_note( $note ) {}
     function update_meta_data( $key, $val ) { $this->meta[$key] = $val; }
     function get_meta( $key ) { return $this->meta[$key] ?? ''; }
+    function delete_meta_data( $key ) { unset( $this->meta[$key] ); }
+    function get_type() { return 'shop_order'; }
+    function get_order_number() { return $this->id; }
+    function get_date_created() { return null; }
+    function get_billing_company() { return $this->addresses['billing']['company'] ?? ''; }
+    function get_total() { return $this->total; }
+    function get_currency() { return 'EUR'; }
+    function add_order_note( $text, $customer = false, $user = false ) { $this->notes[] = [ $text, $customer, $user ]; }
     function add_item( $item ) { $this->items[] = $item; }
     function get_items() { $GLOBALS['full_order_item_reads']++; return $this->items; }
     function calculate_totals() { throw new Exception( 'Tax/checkout calculation is forbidden' ); }
     function set_total( $v ) { $this->total = $v; }
-    function save() { if ( ! $this->id ) { $this->id = 1001 + count( $GLOBALS['orders'] ); } $GLOBALS['orders'][$this->id] = $this; return $this->id; }
+    function save() {
+        if ( ! $this->id ) { $this->id = 1001 + count( $GLOBALS['orders'] ); }
+        $GLOBALS['orders'][$this->id] = $this;
+        if ( $this->saved_status !== $this->status ) {
+            $from = $this->saved_status; $this->saved_status = $this->status;
+            $this->transitions[] = [ $from, $this->status ];
+            do_action( 'woocommerce_order_status_' . $from . '_to_' . $this->status, $this->id, $this );
+        }
+        return $this->id;
+    }
     function get_view_order_url() { return 'https://shop.test/view-order/' . $this->id; }
 }
 function wc_get_orders( $args ) { return array_values( array_filter( $GLOBALS['orders'], function( $o ) use ( $args ) { return $o->customer_id === $args['customer_id'] && $o->get_meta( $args['meta_key'] ) === $args['meta_value']; } ) ); }
@@ -260,6 +303,8 @@ class MockWPDB {
             return true;
         }
         $GLOBALS['write_count']++;
+        if ( strpos( $query, 'DELETE FROM' ) === 0 && strpos( $query, 'variation_id IN' ) !== false ) { $GLOBALS['prune_delete_queries'][] = $query; }
+        if ( ! empty( $GLOBALS['fail_prune_delete'] ) && strpos( $query, 'DELETE FROM' ) === 0 && strpos( $query, 'variation_id IN' ) !== false ) { $this->last_error = 'Delete failed'; return false; }
         if ( $GLOBALS['write_failure'] || ( !empty($GLOBALS['fail_insert']) && strpos($query, 'INSERT INTO') === 0 ) ) {
             $this->last_error = 'Database write failed';
             return false;
@@ -384,6 +429,9 @@ require __DIR__ . '/../b2b-matrix-api.php';
 function fixture() {
     global $wpdb;
     $GLOBALS['logged_in'] = $GLOBALS['access'] = $GLOBALS['product_access'] = true;
+    $GLOBALS['manager'] = $GLOBALS['old_authenticated'] = $GLOBALS['is_admin'] = false;
+    $GLOBALS['old_user'] = false; $GLOBALS['manager_ids'] = []; $GLOBALS['screen_id'] = ''; $GLOBALS['denied_order_id'] = null;
+    $GLOBALS['checked_admin_action'] = $GLOBALS['admin_nonce_action'] = '';
     $GLOBALS['write_failure'] = $GLOBALS['password_required'] = false;
     $GLOBALS['write_count'] = $GLOBALS['catalog_reads'] = $GLOBALS['price_reads'] = $GLOBALS['generation'] = 0;
     $GLOBALS['options'] = $GLOBALS['transients'] = $GLOBALS['removed'] = [];
@@ -399,6 +447,10 @@ function fixture() {
     $wpdb->fail_order_item_read = false;
     $GLOBALS['full_order_item_reads'] = 0;
     $GLOBALS['full_list_reads'] = 0;
+    $GLOBALS['jpd_cancelled_ids'] = $GLOBALS['jpd_requested_ids'] = [];
+    $GLOBALS['fail_prune_delete'] = false;
+    $GLOBALS['prune_delete_queries'] = [];
+    unset( $GLOBALS['action_callbacks'][B2B_Preorder_Submission::PROCESSING_EMAIL_ACTION], $GLOBALS['action_callbacks'][B2B_Preorder_Submission::PROCESSING_EMAIL_ACTION . '_notification'] );
     $wpdb->items = [
         7 => [
             10 => [ 'product_id' => 100, 'variation_id' => 10, 'qty' => 2 ],
@@ -538,7 +590,7 @@ $tests = [
         $GLOBALS['meta'][7]['billing_email'] = 'billing@b2b.test';
         $payload = B2B_Preorder_List::get_list_payload( 7 );
         check( count( $payload['items'] ) >= 1 );
-        check( $payload['totalQty'] === 9 );
+        check( $payload['totalQty'] === 5 && count( $payload['removedItems'] ) === 1 );
         check( $payload['customerInfo']['afm'] === '123456789' );
         check( $payload['customerInfo']['company'] === 'B2B Company SA' );
         check( $payload['customerInfo']['name'] === 'B2B Company SA' );
@@ -636,7 +688,7 @@ $tests = [
         $fin = B2B_Preorder_List::execute_finalize_order( 7, $start['order_id'], $start['token'] );
         check( ! is_wp_error( $fin ) && $fin['complete'] === true && $fin['status'] === 'complete' );
         check( $fin['redirect'] === 'https://shop.test/my-account/orders/' );
-        check( $GLOBALS['orders'][1001]->status === 'b2b-submitted' );
+        check( $GLOBALS['orders'][1001]->status === 'processing' );
         // Pre-order table should be cleared for user after finalization
         check( empty( $wpdb->items[7] ) );
     },
@@ -673,6 +725,169 @@ $tests = [
     },
     'submission rejects unavailable lines instead of silently dropping them' => function() {
         error_is(B2B_Preorder_List::execute_start_order(7), 'unavailable_items'); check(empty($GLOBALS['orders']));
+    },
+    'processing emails use the native WooCommerce notification pipeline only after all lines exist' => function() {
+        $action = B2B_Preorder_Submission::PROCESSING_EMAIL_ACTION;
+        $actions = B2B_Preorder_Submission::email_actions( ['woocommerce_order_status_pending_to_processing', $action] );
+        check( count($actions) === 2 && in_array($action, $actions, true) );
+        $admin = new class { public $calls = []; function trigger($id, $order) { $this->calls[] = [$id, $order->get_status(), count($order->items), $order->total]; } };
+        $customer = clone $admin;
+        $emails = ['WC_Email_New_Order'=>$admin, 'WC_Email_Customer_Processing_Order'=>$customer];
+        check( B2B_Preorder_Submission::processing_emails($emails) === $emails );
+        B2B_Preorder_Submission::processing_emails($emails);
+        // Simulate WooCommerce's transactional dispatcher, including its notification suffix.
+        add_action($action, function($id, $order) use ($action) { do_action($action . '_notification', $id, $order); }, 10, 2);
+        unset($GLOBALS['wpdb']->items[7][55]);
+        $start = B2B_Preorder_List::execute_start_order(7);
+        check($GLOBALS['orders'][1001]->get_status() === 'b2b-draft' && !$admin->calls && !$customer->calls);
+        B2B_Preorder_List::execute_add_batch(7, $start['order_id'], $start['token']);
+        check(!$admin->calls && !$customer->calls);
+        B2B_Preorder_List::execute_finalize_order(7, $start['order_id'], $start['token']);
+        check($admin->calls === [[1001, 'processing', 2, 83.5]] && $customer->calls === $admin->calls);
+        B2B_Preorder_List::execute_finalize_order(7, $start['order_id'], $start['token']);
+        check(count($admin->calls) === 1 && count($customer->calls) === 1);
+    },
+    'My List removes site cancellations once in bulk and keeps valid selections with accurate totals' => function() {
+        unset($GLOBALS['wpdb']->items[7][55]);
+        $GLOBALS['jpd_cancelled_ids'] = [10];
+        $payload = B2B_Preorder_List::get_list_payload(7);
+        check($GLOBALS['jpd_requested_ids'] === [[10, 11]]);
+        check(count($payload['items']) === 1 && !$payload['items'][0]['unavailable'] && $payload['items'][0]['total_qty'] === 3);
+        check(count($GLOBALS['wpdb']->items[7]) === 1 && !isset($GLOBALS['wpdb']->items[7][10]));
+        check($payload['removedItems'][0]['partial'] && $payload['removedItems'][0]['variations'][0]['id'] === 10);
+        check($payload['totalQty'] === 3 && $payload['totalVal'] === 52.5 && strlen($payload['quoteVersion']) === 64);
+        check(!is_wp_error(B2B_Preorder_List::execute_start_order(7, '', $payload['quoteVersion'])));
+    },
+    'unpublished or missing parent and variation products are pruned independently of the site helper' => function() {
+        foreach (['draft', 'private', 'trash', 'deleted'] as $status) {
+            fixture(); unset($GLOBALS['wpdb']->items[7][55]);
+            if ($status === 'deleted') { unset($GLOBALS['products'][10]); } else { $GLOBALS['products'][10]->status = $status; }
+            error_is(B2B_Preorder_List::execute_start_order(7), 'unavailable_items');
+            $payload = B2B_Preorder_List::get_list_payload(7);
+            check(!$payload['items'][0]['unavailable'] && $payload['items'][0]['total_qty'] === 3 && $payload['removedItems'][0]['partial']);
+            fixture(); unset($GLOBALS['wpdb']->items[7][55]);
+            if ($status === 'deleted') { unset($GLOBALS['products'][100]); } else { $GLOBALS['products'][100]->status = $status; }
+            error_is(B2B_Preorder_List::execute_start_order(7), 'unavailable_items');
+            $payload = B2B_Preorder_List::get_list_payload(7);
+            check(!$payload['items'] && !$GLOBALS['wpdb']->items[7] && !$payload['removedItems'][0]['partial'] && count($payload['removedItems'][0]['variations']) === 2);
+            check(!$GLOBALS['orders']);
+        }
+    },
+    'cancellation notices survive lost responses and stale acknowledgements cannot clear newer cancellations' => function() {
+        unset($GLOBALS['wpdb']->items[7][55]); $GLOBALS['products'][10]->status = 'private';
+        $first = B2B_Preorder_List::get_list_payload(7);
+        $again = B2B_Preorder_List::get_list_payload(7);
+        check($first['removedItems'] === $again['removedItems'] && $first['removedNoticeToken'] === $again['removedNoticeToken']);
+        $GLOBALS['products'][11]->status = 'trash';
+        $newer = B2B_Preorder_List::get_list_payload(7);
+        check($newer['removedNoticeToken'] !== $first['removedNoticeToken'] && count($newer['removedItems'][0]['variations']) === 2);
+        B2B_Matrix_DB::acknowledge_removals(7, $first['removedNoticeToken']);
+        check(B2B_Preorder_List::get_list_payload(7)['removedNoticeToken'] === $newer['removedNoticeToken']);
+        $GLOBALS['wpdb']->items[8][10] = ['product_id'=>100,'variation_id'=>10,'qty'=>9];
+        B2B_Matrix_DB::acknowledge_removals(7, $newer['removedNoticeToken']);
+        check(!B2B_Preorder_List::get_list_payload(7)['removedItems'] && isset($GLOBALS['wpdb']->items[8][10]));
+    },
+    'failed notice persistence or deletion never returns a falsely cleaned list and safely retries' => function() {
+        unset($GLOBALS['wpdb']->items[7][55]); $GLOBALS['products'][10]->status = 'draft';
+        $GLOBALS['write_failure'] = true;
+        error_is(B2B_Preorder_List::get_list_payload(7), 'database_error');
+        check(isset($GLOBALS['wpdb']->items[7][10]) && !B2B_Matrix_DB::removal_notice(7)['items']);
+        $GLOBALS['write_failure'] = false; $GLOBALS['wpdb']->last_error = ''; $GLOBALS['fail_prune_delete'] = true;
+        error_is(B2B_Preorder_List::get_list_payload(7), 'database_error');
+        check(isset($GLOBALS['wpdb']->items[7][10]) && B2B_Matrix_DB::removal_notice(7)['items']);
+        $GLOBALS['fail_prune_delete'] = false; $GLOBALS['wpdb']->last_error = '';
+        check(B2B_Preorder_List::get_list_payload(7)['removedItems'] && !isset($GLOBALS['wpdb']->items[7][10]));
+    },
+    'a staged removal notice is discarded if the product is republished after a failed delete' => function() {
+        unset($GLOBALS['wpdb']->items[7][55]); $GLOBALS['products'][10]->status = 'draft'; $GLOBALS['fail_prune_delete'] = true;
+        error_is(B2B_Preorder_List::get_list_payload(7), 'database_error');
+        $GLOBALS['fail_prune_delete'] = false; $GLOBALS['wpdb']->last_error = ''; $GLOBALS['products'][10]->status = 'publish';
+        $payload = B2B_Preorder_List::get_list_payload(7);
+        check(!$payload['removedItems'] && $payload['totalQty'] === 5 && isset($GLOBALS['wpdb']->items[7][10]));
+    },
+    'removal notice preserves catalog backslashes through WordPress metadata unslashing' => function() {
+        unset($GLOBALS['wpdb']->items[7][55]); $GLOBALS['products'][100]->sku = 'SKU\\STYLE'; $GLOBALS['products'][10]->status = 'draft';
+        $payload = B2B_Preorder_List::get_list_payload(7);
+        check($payload['removedItems'][0]['sku'] === 'SKU\\STYLE');
+        check(B2B_Preorder_List::get_list_payload(7)['removedItems'][0]['sku'] === 'SKU\\STYLE');
+    },
+    'many canceled styles are removed with one bulk delete scoped to the current account' => function() {
+        unset($GLOBALS['wpdb']->items[7][55]);
+        for($i=0;$i<15;$i++) {
+            $pid=200+$i; $vid=2000+$i;
+            $GLOBALS['products'][$pid] = new Product(); $GLOBALS['products'][$pid]->id=$pid; $GLOBALS['products'][$pid]->status='private';
+            $GLOBALS['products'][$vid] = new Product('variation', $pid); $GLOBALS['products'][$vid]->id=$vid;
+            $row=['product_id'=>$pid,'variation_id'=>$vid,'qty'=>6];
+            $GLOBALS['wpdb']->items[7][$vid]=$GLOBALS['wpdb']->items[8][$vid]=$row;
+        }
+        $payload=B2B_Preorder_List::get_list_payload(7);
+        check(count($payload['removedItems'])===15 && $payload['totalQty']===5 && count($GLOBALS['wpdb']->items[7])===2);
+        check(count($GLOBALS['prune_delete_queries'])===1 && count($GLOBALS['wpdb']->items[8])===15);
+        check(count($GLOBALS['jpd_requested_ids'])===1 && count($GLOBALS['jpd_requested_ids'][0])===17);
+        B2B_Preorder_List::get_list_payload(7);
+        check(count($GLOBALS['prune_delete_queries'])===1);
+    },
+    'automatic pruning preserves frozen submissions, missing prices and access-restricted published products' => function() {
+        unset($GLOBALS['wpdb']->items[7][55]);
+        $start = B2B_Preorder_List::execute_start_order(7);
+        $GLOBALS['products'][10]->status = 'draft';
+        $payload = B2B_Preorder_List::get_list_payload(7);
+        check($payload['activeBatch'] && !$payload['removedItems'] && $payload['items'][0]['unavailable'] && count($GLOBALS['wpdb']->items[7]) === 2);
+        fixture(); unset($GLOBALS['wpdb']->items[7][55]); $GLOBALS['product_access'] = false;
+        $payload = B2B_Preorder_List::get_list_payload(7);
+        check(!$payload['removedItems'] && $payload['items'][0]['unavailable'] && count($GLOBALS['wpdb']->items[7]) === 2);
+        fixture(); unset($GLOBALS['wpdb']->items[7][55]); $GLOBALS['products'][100]->variations[0]['display_price'] = '';
+        $payload = B2B_Preorder_List::get_list_payload(7);
+        check(!$payload['removedItems'] && $payload['items'][0]['unpriced'] && count($GLOBALS['wpdb']->items[7]) === 2);
+    },
+    'removal acknowledgements require the same authenticated account and notices are isolated per site' => function() {
+        $payload = B2B_Preorder_List::get_list_payload(7);
+        error_is(B2B_Preorder_List::dispatch('acknowledge-removals', ['expected_user_id'=>8,'notice_token'=>$payload['removedNoticeToken']]), 'account_changed');
+        $GLOBALS['logged_in'] = false;
+        error_is(B2B_Preorder_List::dispatch('acknowledge-removals', ['expected_user_id'=>7,'notice_token'=>$payload['removedNoticeToken']]), 'login_required');
+        $GLOBALS['logged_in'] = true; $GLOBALS['wpdb']->prefix = 'wp_2_';
+        check(!B2B_Matrix_DB::removal_notice(7)['items']);
+        $GLOBALS['wpdb']->prefix = 'wp_';
+        check(B2B_Preorder_List::dispatch('acknowledge-removals', ['expected_user_id'=>7,'notice_token'=>$payload['removedNoticeToken']])['success']);
+        check(!B2B_Matrix_DB::removal_notice(7)['items']);
+    },
+    'a failure after saving processing resumes without another status transition or clearing a new list' => function() {
+        unset($GLOBALS['wpdb']->items[7][55]);
+        $start = B2B_Preorder_List::execute_start_order(7);
+        B2B_Preorder_List::execute_add_batch(7, $start['order_id'], $start['token']);
+        $GLOBALS['write_failure'] = true;
+        error_is(B2B_Preorder_List::execute_finalize_order(7, $start['order_id'], $start['token']), 'database_error');
+        $order = $GLOBALS['orders'][1001];
+        check($order->get_status() === 'processing' && count($GLOBALS['wpdb']->items[7]) === 2);
+        $transitions = $order->transitions;
+        $GLOBALS['write_failure'] = false; $GLOBALS['wpdb']->last_error = '';
+        $done = B2B_Preorder_List::execute_finalize_order(7, $start['order_id'], $start['token']);
+        check(!is_wp_error($done) && $done['complete'] && $order->transitions === $transitions);
+        save([['id'=>10, 'qty'=>19]]);
+        B2B_Preorder_List::execute_finalize_order(7, $start['order_id'], $start['token']);
+        check($GLOBALS['wpdb']->items[7][10]['qty'] === 19 && $order->transitions === $transitions);
+    },
+    'legacy submitted batches finish without changing or resending their historical order status' => function() {
+        unset($GLOBALS['wpdb']->items[7][55]);
+        $start = B2B_Preorder_List::execute_start_order(7);
+        B2B_Preorder_List::execute_add_batch(7, $start['order_id'], $start['token']);
+        $order = $GLOBALS['orders'][1001]; $order->set_status('b2b-submitted'); $order->save();
+        $transitions = $order->transitions;
+        $done = B2B_Preorder_List::execute_finalize_order(7, $start['order_id'], $start['token']);
+        check(!is_wp_error($done) && $done['complete'] && $order->get_status() === 'b2b-submitted' && $order->transitions === $transitions);
+    },
+    'processing preserves preorder stock policy without changing ordinary WooCommerce orders' => function() {
+        $normal = new WC_Order(); $normal->save();
+        check(B2B_Preorder_Submission::can_reduce_order_stock(true, $normal) === true);
+        check(B2B_Preorder_Submission::reduce_order_stock(false, $normal->get_id()) === false);
+        $normal->update_meta_data('_b2b_batch_token', 'foreign-token');
+        check(B2B_Preorder_Submission::can_reduce_order_stock(true, $normal) === true);
+        $preorder = new WC_Order(); $preorder->set_created_via('b2b-preorder');
+        check(B2B_Preorder_Submission::can_reduce_order_stock(true, $preorder) === true);
+        $preorder->update_meta_data('_b2b_batch_token', 'test-token'); $preorder->save();
+        check(B2B_Preorder_Submission::can_reduce_order_stock(true, $preorder) === false);
+        check(B2B_Preorder_Submission::reduce_order_stock(true, $preorder->get_id()) === false);
+        check(B2B_Preorder_Submission::reduce_order_stock(true, 99999) === true);
     },
     'submission requires the same quantities and prices the customer confirmed' => function() {
         unset( $GLOBALS['wpdb']->items[7][55] );
@@ -782,6 +997,7 @@ $tests = [
     },
 ];
 // Buffer test output so PHP header calls can still run in the AJAX fixtures.
+$tests = array_merge( $tests, require __DIR__ . '/order-channel-cases.php' );
 ob_start();
 $failed = 0;
 foreach ( $tests as $name => $test ) { fixture(); try { $test(); echo "PASS $name\n"; } catch ( Throwable $e ) { $failed++; echo "FAIL $name: " . $e->getMessage() . "\n"; } }

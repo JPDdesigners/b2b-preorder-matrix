@@ -6,6 +6,7 @@ if ( ! defined( 'ARRAY_A' ) ) { define( 'ARRAY_A', 'ARRAY_A' ); }
  * High-performance database operations for B2B Pre-Order items and batch order creation.
  */
 class B2B_Matrix_DB {
+    const REMOVAL_NOTICE_META = '_b2b_matrix_removed_items';
     const DB_VERSION = '3.2.0';
     const DB_VERSION_OPTION = 'b2b_matrix_db_version';
 
@@ -40,6 +41,47 @@ class B2B_Matrix_DB {
             return new WP_Error( 'submission_active', 'Η λίστα βρίσκεται σε υποβολή. Συνεχίστε ή ακυρώστε την υποβολή από τη σελίδα λίστας.', [ 'status' => 409 ] );
         }
         return true;
+    }
+
+    public static function removal_notice( $user_id ) {
+        $notice = get_user_meta( $user_id, self::removal_notice_key(), true );
+        return is_array( $notice ) && isset( $notice['token'], $notice['items'] ) ? $notice : [ 'token' => '', 'items' => [] ];
+    }
+    public static function removal_notice_key() {
+        global $wpdb;
+        return self::REMOVAL_NOTICE_META . '_' . md5( $wpdb->prefix );
+    }
+
+    /** Caller holds the account lock. Journal first so a lost response cannot lose the notice. */
+    public static function prune_cancelled_items( $user_id, $raw_items, $removed ) {
+        global $wpdb;
+        $notice = self::removal_notice( $user_id );
+        $entries = $notice['items'];
+        $current_ids = array_fill_keys( array_column( $raw_items, 'variation_id' ), true );
+        // Discard staged notices for items since republished or re-added.
+        foreach ( $entries as $vid => $entry ) {
+            if ( isset( $current_ids[ $vid ] ) && ! isset( $removed[ $vid ] ) ) { unset( $entries[ $vid ] ); }
+        }
+        foreach ( $removed as $vid => $entry ) { $entries[ $vid ] = $entry; }
+        if ( $entries !== $notice['items'] ) {
+            $notice = [ 'token' => wp_generate_uuid4(), 'items' => $entries ];
+            if ( ! update_user_meta( $user_id, self::removal_notice_key(), wp_slash( $notice ) ) ) { return self::db_error(); }
+        }
+        if ( $removed ) {
+            $placeholders = implode( ',', array_fill( 0, count( $removed ), '%d' ) );
+            $sql = $wpdb->prepare( 'DELETE FROM ' . self::table_items() . " WHERE user_id = %d AND variation_id IN ({$placeholders})", array_merge( [ $user_id ], array_keys( $removed ) ) );
+            if ( false === $wpdb->query( $sql ) ) { return self::db_error(); }
+        }
+        return $notice;
+    }
+
+    public static function acknowledge_removals( $user_id, $token ) {
+        return self::with_user_lock( $user_id, function() use ( $user_id, $token ) {
+            $notice = self::removal_notice( $user_id );
+            // A stale tab must never acknowledge a newer cancellation notice.
+            if ( ! is_string( $token ) || ! $token || $notice['token'] !== $token ) { return true; }
+            return delete_user_meta( $user_id, self::removal_notice_key() ) ? true : self::db_error();
+        } );
     }
 
     // Caller holds the account lock. Clear and completion are committed together.
