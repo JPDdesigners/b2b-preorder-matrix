@@ -14,18 +14,35 @@ function submit_button( $label ) { echo '<p><button class="button-primary" type=
 function checked( $a, $b = true ) { if ( (string) $a === (string) $b ) { echo ' checked="checked"'; } }
 function esc_attr( $v ) { return htmlspecialchars( $v, ENT_QUOTES, 'UTF-8' ); }
 function esc_html( $v ) { return esc_attr( $v ); }
+function esc_url( $v ) { return esc_attr( $v ); }
+function admin_url( $path ) { if (!empty($GLOBALS['preview']) && preg_match('/tab=([a-z]+)/', $path, $match)) return 'settings-'.$match[1].'.html'; return '/wp-admin/' . $path; }
+function size_format( $value ) { return round($value / 1024 / 1024, 2) . ' MB'; }
+function wp_nonce_field( $action ) { echo '<input type="hidden" name="_wpnonce" value="fixture">'; }
+$_GET['tab'] = 'appearance';
 require __DIR__ . '/../includes/class-b2b-matrix-settings.php';
 function check( $value, $message ) { if ( ! $value ) { throw new RuntimeException( $message ); } }
 // Render the real PHP form for visual inspection without a WordPress database.
 if ( in_array( '--preview', $argv ?? [], true ) ) {
+    $GLOBALS['preview']=true;
+    foreach ($argv as $arg) { if (preg_match('/^--tab=(overview|appearance|data)$/', $arg, $match)) $_GET['tab']=$match[1]; }
+    class B2B_Matrix_Maintenance {
+        static function schema() { return [
+            'wp_b2b_preorder_items' => ['label'=>'My List','status'=>['Engine'=>'InnoDB','Rows'=>8157,'Data_length'=>1048576,'Index_length'=>524288],'issues'=>[]],
+            'wp_b2b_preorder_batches' => ['label'=>'Υποβολές / batches','status'=>['Engine'=>'InnoDB','Rows'=>120,'Data_length'=>3145728,'Index_length'=>65536],'issues'=>[]],
+        ]; }
+        static function health() { return self::schema(); }
+    }
     ob_start(); B2B_Matrix_Settings::render(); $form = ob_get_clean();
-    $form = str_replace( '<form action="options.php" method="post">', '<form onsubmit="event.preventDefault()">', $form );
+    $form = preg_replace( '/<form action="[^"]*" method="post">/', '<form onsubmit="event.preventDefault()">', $form );
     $form = str_replace( 'type="submit"', 'type="submit" disabled title="Η αποθήκευση λειτουργεί μόνο μέσα στο WordPress"', $form );
     $css = file_get_contents( __DIR__ . '/../assets/admin-settings.css' );
-    echo '<!doctype html><html lang="el"><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><title>B2B Matrix · Settings preview</title><style>body{background:#f0f0f1;font:13px system-ui;margin:32px}button,input{font:inherit}button{border:1px solid;color:white;border-radius:4px}.b2b-settings{margin:auto}h1{font-size:26px}</style><style>' . $css . '</style><p style="text-align:center">Προεπισκόπηση φόρμας · η αποθήκευση είναι διαθέσιμη μέσα στο WordPress.</p>' . $form . '</html>';
+    $css .= '.screen-reader-text{position:absolute;width:1px;height:1px;padding:0;margin:-1px;overflow:hidden;clip:rect(0,0,0,0);white-space:nowrap;border:0}';
+    echo '<!doctype html><html lang="el"><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><title>B2B Matrix · Settings preview</title><style>body{background:#f0f0f1;font:13px system-ui;margin:24px}button,input{font:inherit}button{border:1px solid;border-radius:4px}.b2b-settings{margin:auto}h1{font-size:26px}.button{display:inline-block;padding:10px 14px;line-height:20px;text-decoration:none;border:1px solid #b4b4b8;border-radius:4px;color:#334155;background:#f6f7f7}button:disabled{opacity:.6}input[type=text]{border:1px solid #b4b4b8;border-radius:4px}@media(max-width:600px){body{margin:12px}}</style><style>' . $css . '</style><p style="text-align:center">Τοπική προεπισκόπηση · εικονικά δεδομένα · οι ενέργειες είναι απενεργοποιημένες.</p>' . $form . '</html>';
     exit;
 }
 $tests = [
+    'shared tokens keep a readable foreground for pale custom colors' => function() { $GLOBALS['options'][B2B_Matrix_Settings::OPTION] = [ 'palette' => 'custom', 'custom_color' => '#ffffff', 'radius' => 'square' ]; $tokens = B2B_Matrix_Settings::design_tokens(); check($tokens['on_accent'] === '#000000' && $tokens['focus'] === '#334155' && $tokens['card_radius'] === '0px', 'Unreadable shared appearance'); },
+    'overview has separate native navigation and no settings form' => function() { unset($_GET['tab']); ob_start(); B2B_Matrix_Settings::render(); $html = ob_get_clean(); $_GET['tab'] = 'appearance'; check(strpos($html, 'aria-current="page"') !== false && strpos($html, 'Πίνακες &amp; σεζόν') !== false && strpos($html, '<form') === false, 'Dashboard navigation failed'); },
     'first install defaults to indigo, inherited font, rounded corners' => function() { check( B2B_Matrix_Settings::get() === [ 'palette' => 'indigo', 'custom_color' => '#4f46e5', 'inherit_font' => true, 'radius' => 'rounded', 'lightbox' => 'site' ], 'Incorrect defaults' ); },
     'settings form off value survives sanitization and a simulated options round trip' => function() { $GLOBALS['options'][B2B_Matrix_Settings::OPTION] = B2B_Matrix_Settings::sanitize( [ 'palette' => 'violet', 'custom_color' => '#7c3aed', 'inherit_font' => '0', 'radius' => 'square', 'lightbox' => 'plugin' ] ); check( B2B_Matrix_Settings::get() === [ 'palette' => 'violet', 'custom_color' => '#7c3aed', 'inherit_font' => false, 'radius' => 'square', 'lightbox' => 'plugin' ], 'Lost saved choices' ); },
     'malicious nested and arbitrary CSS values never enter output' => function() { foreach ( [ false, 'bad', [ 'palette' => ['indigo'], 'radius' => ['square'] ], [ 'palette' => 'red;}</style><script>alert(1)</script>', 'radius' => '100px', 'other' => 'injected' ] ] as $input ) { check( B2B_Matrix_Settings::sanitize( $input ) === B2B_Matrix_Settings::defaults(), 'Unsafe value escaped allowlist' ); } },

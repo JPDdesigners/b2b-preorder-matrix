@@ -15,6 +15,8 @@ function b2b_matrix_uninstall_site() {
     delete_option( 'b2b_matrix_db_version' );
     delete_option( 'b2b_matrix_appearance' );
     delete_option( 'b2b_matrix_catalog_generation' );
+    delete_option( 'b2b_matrix_legacy_retired' );
+    delete_option( 'b2b_matrix_last_season_reset' );
     delete_metadata( 'user', 0, '_b2b_matrix_removed_items_' . md5( $wpdb->prefix ), '', true );
 }
 

@@ -1,4 +1,4 @@
-# B2B Order List Matrix 3.3.0
+# B2B Order List Matrix 3.4.0
 
 A WooCommerce catalog matrix and dedicated **Pre-Order List / Cart System** powered by custom normalized database tables, Vue 3, and plugin-scoped CSS.
 
@@ -16,6 +16,7 @@ b2b-preorder-matrix/
   uninstall.php
   includes/class-b2b-matrix-db.php
   includes/class-b2b-matrix-settings.php
+  includes/class-b2b-matrix-maintenance.php
   includes/class-b2b-matrix-catalog.php
   includes/class-b2b-order-channel.php
   includes/class-b2b-preorder-list.php
@@ -43,13 +44,29 @@ cd ..
 python tools/build_release.py
 ```
 
-The uploadable ZIP is `releases/b2b-preorder-matrix-3.3.0.zip`, with a single `b2b-preorder-matrix/` root. The packaging script checks every ZIP entry against its source bytes and excludes tests, dependencies and local files. Use `--force` to replace a previously built ZIP. Rebuild Vue after editing `.vue` or JavaScript source; packaging by itself uses the current committed `dist` assets. The automatic GitHub source archive contains the development repository; use the named plugin ZIP attached to the release for WordPress upload.
+The uploadable ZIP is `releases/b2b-preorder-matrix-3.4.0.zip`, with a single `b2b-preorder-matrix/` root. The packaging script checks every ZIP entry against its source bytes and excludes tests, dependencies and local files. Use `--force` to replace a previously built ZIP. Rebuild Vue after editing `.vue` or JavaScript source; packaging by itself uses the current committed `dist` assets. The automatic GitHub source archive contains the development repository; use the named plugin ZIP attached to the release for WordPress upload.
 
 Own plugin code is licensed under GPL-2.0-or-later; see [LICENSE](LICENSE). Bundled Vue and Pinia retain their MIT licenses, included in `licenses/`.
 
 No Node dependencies, demo HTML, mocks, tests or development server are deployed.
 
-## Development
+## Admin dashboard and seasonal data — 3.4.0
+
+The native WordPress dashboard has three sections: Overview, Appearance, and Tables & Season. It requires `manage_options`; no additional Vue app or polling is loaded in admin.
+
+Tables & Season displays table engines, estimated row counts and allocated data/index space. An explicit read-only health check verifies required columns and indexes (including unique indexes), InnoDB, exact counts, invalid row values, active batch counts, and completed/failed/cancelled history and date range. It does not parse customer snapshots or run on frontend visits. This is an application/schema check, not a filesystem-level database corruption checker.
+
+The manual **Clear season** action requires a POST, a nonce and typed `CLEAR`. It removes all users' My List rows and all batch records, snapshots and error history for the current site. It preserves table structures, appearance settings and WooCommerce orders. There is no automatic six-month deletion or per-season archive. Take a database backup before clearing if historical table data is needed for comparison. InnoDB can reuse freed space; DELETE does not promise immediate filesystem shrinkage.
+
+Reset refuses active batches and in-flight account operations, including a first save with no table rows. A site maintenance named lock blocks new account callbacks; both table deletions use one transaction and roll back together on failure. The WordPress options table must also be InnoDB, so legacy retirement is committed in the same transaction. Normal account operations make one small `IS_USED_LOCK` query after acquiring their existing account lock; they do not globally serialize different users. The manual reset scans account lock names only during reset. Run it at a quiet seasonal boundary, and refresh existing customer tabs afterward; cross-tab synchronization is not implemented in this release.
+
+After a successful reset, legacy metadata imports are permanently retired for that site so old lists cannot repopulate the cleared table. Legacy keys are not site-scoped and are preserved for other multisite sites; current site's cancellation notices are removed. The last successful reset time is recorded.
+
+For optional integration, `B2B_Matrix_Settings::design_tokens()` exposes validated accent, readable foreground, focus color and corner radii. JPD Order Documents 1.1.0 can opt into these without a framework dependency.
+
+The maintenance integration test uses a disposable MariaDB bound to localhost on a dedicated port, with fixed `codex_b2b_maintenance_test` database and `audit_` prefix. Never point it at a store database. On this workstation initialize a temporary directory with `mysql_install_db.exe --datadir=<temporary-directory> --port=3317`, start its `mysqld.exe --defaults-file=<temporary-directory>/my.ini --bind-address=127.0.0.1 --port=3317`, then run `php tests/maintenance.php 3317`. Stop the disposable server after testing. The test covers guards, concurrent connections, rollback and preservation of order data.
+
+## Frontend development
 
 Use Node.js 20.19+ or 22.12+ with the frontend's Vite 8 toolchain. From the repository root:
 

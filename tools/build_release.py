@@ -9,6 +9,7 @@ ROOT = Path(__file__).resolve().parents[1]
 FILES = [
     'b2b-matrix-api.php', 'uninstall.php', 'LICENSE', 'README.md',
     'includes/class-b2b-matrix-db.php', 'includes/class-b2b-matrix-settings.php',
+    'includes/class-b2b-matrix-maintenance.php',
     'includes/class-b2b-matrix-catalog.php', 'includes/class-b2b-order-channel.php',
     'includes/class-b2b-preorder-list.php', 'includes/class-b2b-preorder-submission.php',
     'assets/admin-settings.css', 'b2b-matrix/dist/matrix-app.js',

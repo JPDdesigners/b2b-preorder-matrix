@@ -1,6 +1,23 @@
 .b2b-settings { max-width: 920px; padding: 20px 16px 32px 0; }
 .b2b-settings h1 { font-weight: 650; color: #18181b; }
 .b2b-settings-intro { color: #71717a; font-size: 15px; margin-bottom: 28px; }
+.b2b-admin-tabs { display: flex; flex-wrap: wrap; gap: 8px; border-bottom: 1px solid #d4d4d8; margin: 0 0 28px; padding-bottom: 12px; }
+.b2b-admin-tabs a { padding: 10px 16px; text-decoration: none; border-radius: 6px; color: #3f3f46; background: white; border: 1px solid #d4d4d8; }
+.b2b-admin-tabs a[aria-current] { color: white; background: #334155; border-color: #334155; }
+.b2b-admin-tabs a:focus-visible, .b2b-settings button:focus-visible { outline: 2px solid #4f46e5; outline-offset: 3px; }
+.b2b-admin-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 20px; }
+.b2b-settings-card h2 { margin: 0 0 14px; font-size: 17px; }
+.b2b-table-name { display: block; overflow-wrap: anywhere; margin-bottom: 18px; }
+.b2b-data-stats { display: grid; grid-template-columns: 1fr auto; gap: 10px 16px; }
+.b2b-data-stats dd { margin: 0; font-weight: 600; }
+.b2b-data-ok { color: #166534 !important; }
+.b2b-data-issues { color: #991b1b; list-style: disc; padding-left: 18px; }
+.b2b-danger-zone { border-color: #e5a7a7 !important; }
+.b2b-danger-zone label { display: block; font-weight: 600; }
+.b2b-reset-controls { display: flex; flex-wrap: wrap; gap: 12px; margin-top: 12px; }
+.b2b-reset-controls input { max-width: 160px; min-height: 40px; padding: 6px 12px; }
+.b2b-danger-button { background: #b91c1c !important; border-color: #b91c1c !important; color: white !important; min-height: 40px !important; }
+@media (max-width: 700px) { .b2b-admin-grid { grid-template-columns: 1fr; gap: 0; } .b2b-settings { padding-right: 8px; } }
 .b2b-settings-card { background: white; border: 1px solid #e4e4e7; border-radius: 12px; padding: 20px 24px 24px; margin: 0 0 24px; }
 .b2b-settings-card legend { font-size: 15px; font-weight: 600; color: #27272a; padding: 0 8px; }
 .b2b-settings-card p { color: #71717a; max-width: 720px; line-height: 1.7; margin: 0 0 18px; }
@@ -25,4 +42,3 @@
 .b2b-custom-color-wrap input[type="color"] { width: 44px; height: 38px; border: 1px solid #e4e4e7; border-radius: 6px; padding: 2px; cursor: pointer; background: white; }
 .b2b-custom-color-wrap input[type="text"] { height: 38px; border: 1px solid #e4e4e7; border-radius: 6px; padding: 0 10px; font-size: 13px; font-family: monospace; }
 @media (max-width: 600px) { .b2b-settings-card { padding: 16px; } .b2b-radius-options label { width: 100%; } }
-

@@ -181,7 +181,7 @@ class MockWPDB {
     public $fail_order_item_read = false;
 
     private $transaction;
-    function get_var( $query ) { if ( stripos( $query, 'GET_LOCK' ) !== false ) { return empty( $GLOBALS['lock_failure'] ) ? 1 : 0; } return 1; }
+    function get_var( $query ) { if ( stripos( $query, 'GET_LOCK' ) !== false ) { return empty( $GLOBALS['lock_failure'] ) ? 1 : 0; } if ( stripos( $query, 'IS_USED_LOCK' ) !== false ) { return null; } return 1; }
     function get_charset_collate() { return 'DEFAULT CHARACTER SET utf8mb4'; }
 
     function prepare( $query, ...$args ) {

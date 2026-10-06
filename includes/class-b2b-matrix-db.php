@@ -19,6 +19,11 @@ class B2B_Matrix_DB {
 
     private static $locks = [];
 
+    public static function maintenance_lock_name() {
+        global $wpdb;
+        return 'b2b_reset_' . md5( $wpdb->prefix );
+    }
+
     public static function db_error() {
         return new WP_Error( 'database_error', 'Η αλλαγή δεν αποθηκεύτηκε. Δοκιμάστε ξανά.', [ 'status' => 500 ] );
     }
@@ -31,7 +36,16 @@ class B2B_Matrix_DB {
             return new WP_Error( 'list_busy', 'Η λίστα ενημερώνεται ήδη. Δοκιμάστε ξανά.', [ 'status' => 409 ] );
         }
         self::$locks[ $key ] = true;
-        try { return $callback(); }
+        try {
+            // Check after acquiring the account lock. Reset holds the maintenance
+            // lock and checks existing account locks before touching either table.
+            $owner = $wpdb->get_var( $wpdb->prepare( 'SELECT IS_USED_LOCK(%s)', self::maintenance_lock_name() ) );
+            if ( $wpdb->last_error ) { return self::db_error(); }
+            if ( $owner !== null && (int) $owner > 0 ) {
+                return new WP_Error( 'season_reset', 'Γίνεται καθαρισμός σεζόν. Περιμένετε λίγο και ανανεώστε τη σελίδα.', [ 'status' => 409 ] );
+            }
+            return $callback();
+        }
         catch ( Throwable $e ) { return self::db_error(); }
         finally { unset( self::$locks[ $key ] ); $wpdb->get_var( $wpdb->prepare( 'SELECT RELEASE_LOCK(%s)', $key ) ); }
     }
@@ -383,6 +397,7 @@ class B2B_Matrix_DB {
         } );
     }
     private static function migrate_all_legacy( $user_id ) {
+        if ( get_option( 'b2b_matrix_legacy_retired', false ) ) { return; }
         // Account lock is held. Never add data into a frozen submission snapshot.
         if ( self::get_active_batch( $user_id ) ) { return; }
         $metadata = get_user_meta( $user_id );
@@ -393,6 +408,7 @@ class B2B_Matrix_DB {
         }
     }
     private static function import_legacy( $user_id, $key, $legacy ) {
+        if ( get_option( 'b2b_matrix_legacy_retired', false ) ) { return; }
         global $wpdb;
         $rows = []; $values = [];
         foreach ( $legacy as $vid => $qty ) {
