@@ -84,7 +84,7 @@ defineEmits(['click']);
 
 .b2b-btn-primary {
   background: var(--b2b-primary, #4f46e5) !important;
-  color: #ffffff !important;
+  color: var(--b2b-on-primary, #ffffff) !important;
   border: 1px solid var(--b2b-primary, #4f46e5) !important;
   box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1), 0 1px 2px rgba(0, 0, 0, 0.06) !important;
 }
@@ -158,7 +158,7 @@ defineEmits(['click']);
 .b2b-spinner {
   width: 14px;
   height: 14px;
-  border: 2px solid rgba(255, 255, 255, 0.35);
+  border: 2px solid color-mix(in srgb, currentColor 30%, transparent);
   border-top-color: currentColor;
   border-radius: 50%;
   animation: b2b-spin 0.6s linear infinite;
@@ -170,4 +170,4 @@ defineEmits(['click']);
 }
 </style>
 
-<style scoped>.b2b-btn:focus-visible { outline: 2px solid var(--b2b-primary, #4f46e5) !important; }</style>
+<style scoped>.b2b-btn:focus-visible { outline: 2px solid var(--b2b-focus-ring, var(--b2b-primary, #4f46e5)) !important; }</style>

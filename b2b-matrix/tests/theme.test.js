@@ -39,11 +39,29 @@ test('fresh API appearance overrides cached HTML settings without changing quant
   assert.deepEqual(store.appearance, { palette: 'violet', radius: 'square', inherit_font: false });
   assert.equal(store.cart[1], 5);
 });
-test('custom hex color palette produces dynamic primary, hover, soft, and border tokens', () => {
+test('custom hex color palette produces dynamic primary, hover, soft, border, and contrast tokens', () => {
   const style = appearanceStyle({ palette: 'custom', custom_color: '#10b981' });
   assert.equal(style['--b2b-primary'], '#10b981');
   assert.ok(style['--b2b-primary-hover']);
   assert.ok(style['--b2b-primary-soft']);
   assert.ok(style['--b2b-primary-border']);
+  assert.equal(style['--b2b-on-primary'], '#0f172a');
+  assert.equal(style['--b2b-focus-ring'], '#334155');
+});
+test('pale and bright custom colors switch to dark foreground and visible focus ring while dark colors keep white foreground', () => {
+  const pale = appearanceStyle({ palette: 'custom', custom_color: '#fef08a' });
+  assert.equal(pale['--b2b-on-primary'], '#0f172a');
+  assert.equal(pale['--b2b-focus-ring'], '#334155');
+  assert.notEqual(pale['--b2b-primary-ink'], '#fef08a');
+
+  const white = appearanceStyle({ palette: 'custom', custom_color: '#ffffff' });
+  assert.equal(white['--b2b-on-primary'], '#0f172a');
+  assert.equal(white['--b2b-focus-ring'], '#334155');
+  assert.equal(white['--b2b-primary-soft'], '#f1f5f9');
+
+  const dark = appearanceStyle({ palette: 'custom', custom_color: '#1e3a8a' });
+  assert.equal(dark['--b2b-on-primary'], '#ffffff');
+  assert.equal(dark['--b2b-focus-ring'], '#1e3a8a');
+  assert.equal(dark['--b2b-primary-ink'], '#1e3a8a');
 });
 

@@ -151,7 +151,15 @@ class B2B_Matrix_Maintenance {
             wp_die( 'Πληκτρολογήστε CLEAR για να επιβεβαιώσετε τη διαγραφή.' );
         }
         $result = self::reset_season();
-        if ( is_wp_error( $result ) ) { wp_die( esc_html( $result->get_error_message() ), 'Ο καθαρισμός δεν ολοκληρώθηκε', [ 'back_link' => true ] ); }
-        wp_safe_redirect( admin_url( 'admin.php?page=b2b-matrix&tab=data&reset=done' ) ); exit;
+        if ( is_wp_error( $result ) ) {
+            if ( function_exists( 'wp_safe_redirect' ) && function_exists( 'admin_url' ) ) {
+                $reason = preg_replace( '/[^a-z0-9_]/', '', (string) $result->get_error_code() );
+                wp_safe_redirect( admin_url( 'admin.php?page=b2b-matrix&tab=data&reset=failed&reason=' . $reason ) );
+                exit;
+            }
+            wp_die( esc_html( $result->get_error_message() ), 'Ο καθαρισμός δεν ολοκληρώθηκε', [ 'back_link' => true ] );
+        }
+        wp_safe_redirect( admin_url( 'admin.php?page=b2b-matrix&tab=data&reset=done' ) );
+        exit;
     }
 }

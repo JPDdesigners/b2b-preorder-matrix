@@ -41,4 +41,8 @@
 .b2b-custom-color-wrap { display: flex; align-items: center; gap: 10px; margin-top: 14px; flex-wrap: wrap; }
 .b2b-custom-color-wrap input[type="color"] { width: 44px; height: 38px; border: 1px solid #e4e4e7; border-radius: 6px; padding: 2px; cursor: pointer; background: white; }
 .b2b-custom-color-wrap input[type="text"] { height: 38px; border: 1px solid #e4e4e7; border-radius: 6px; padding: 0 10px; font-size: 13px; font-family: monospace; }
+.b2b-contrast-badge { display: inline-flex; align-items: center; padding: 4px 10px; border-radius: 6px; font-size: 11px; font-weight: 600; background: #f4f4f5; color: #3f3f46; border: 1px solid #e4e4e7; }
+.b2b-contrast-badge.is-light-accent { background: #fef3c7; color: #92400e; border-color: #fde68a; }
+.b2b-admin-notice { margin: 0 0 20px !important; border-radius: 8px; }
 @media (max-width: 600px) { .b2b-settings-card { padding: 16px; } .b2b-radius-options label { width: 100%; } }
+

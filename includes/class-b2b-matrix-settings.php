@@ -39,7 +39,11 @@ class B2B_Matrix_Settings {
                 $settings['palette'] = $input['palette'];
             }
         }
-        if ( isset( $input['custom_color'] ) && is_string( $input['custom_color'] ) && preg_match( '/^#([A-Fa-f0-9]{6})$/', $input['custom_color'] ) ) {
+        if (
+            isset( $input['custom_color'] ) &&
+            is_string( $input['custom_color'] ) &&
+            preg_match( '/^#([A-Fa-f0-9]{6})$/', $input['custom_color'] )
+        ) {
             $settings['custom_color'] = strtolower( $input['custom_color'] );
         }
         if ( isset( $input['radius'] ) && in_array( $input['radius'], [ 'rounded', 'square' ], true ) ) {
@@ -61,7 +65,9 @@ class B2B_Matrix_Settings {
     /** Small optional integration surface; no frontend framework dependency. */
     public static function design_tokens() {
         $settings = self::get();
-        $color = $settings['palette'] === 'custom' ? $settings['custom_color'] : self::palettes()[ $settings['palette'] ][1];
+        $color = $settings['palette'] === 'custom'
+            ? $settings['custom_color']
+            : self::palettes()[ $settings['palette'] ][1];
         $rgb = array_map( function( $channel ) {
             $value = hexdec( $channel ) / 255;
             return $value <= 0.04045 ? $value / 12.92 : pow( ( $value + 0.055 ) / 1.055, 2.4 );
@@ -78,25 +84,86 @@ class B2B_Matrix_Settings {
 
     public static function register() {
         register_setting( self::GROUP, self::OPTION, [
-            'type' => 'array', 'sanitize_callback' => [ __CLASS__, 'sanitize' ],
-            'default' => self::defaults(), 'show_in_rest' => false,
+            'type' => 'array',
+            'sanitize_callback' => [ __CLASS__, 'sanitize' ],
+            'default' => self::defaults(),
+            'show_in_rest' => false,
         ] );
     }
 
     public static function add_menu() {
-        add_menu_page( 'B2B Matrix', 'B2B Matrix', 'manage_options', 'b2b-matrix', [ __CLASS__, 'render' ], 'dashicons-screenoptions', 56 );
+        add_menu_page(
+            'B2B Matrix',
+            'B2B Matrix',
+            'manage_options',
+            'b2b-matrix',
+            [ __CLASS__, 'render' ],
+            'dashicons-screenoptions',
+            56
+        );
     }
 
     public static function enqueue( $hook ) {
         if ( $hook !== 'toplevel_page_b2b-matrix' ) { return; }
-        $file = dirname( __DIR__ ) . '/assets/admin-settings.css';
-        wp_enqueue_style( 'b2b-matrix-admin', plugins_url( 'assets/admin-settings.css', dirname( __DIR__ ) . '/b2b-matrix-api.php' ), [], filemtime( $file ) );
+        $plugin_root = dirname( __DIR__ ) . '/b2b-matrix-api.php';
+        $style = dirname( __DIR__ ) . '/assets/admin-settings.css';
+        wp_enqueue_style(
+            'b2b-matrix-admin',
+            plugins_url( 'assets/admin-settings.css', $plugin_root ),
+            [],
+            filemtime( $style )
+        );
+        $script = dirname( __DIR__ ) . '/assets/admin-settings.js';
+        if ( function_exists( 'wp_enqueue_script' ) && is_file( $script ) ) {
+            wp_enqueue_script(
+                'b2b-matrix-admin',
+                plugins_url( 'assets/admin-settings.js', $plugin_root ),
+                [],
+                filemtime( $script ),
+                true
+            );
+        }
+    }
+
+    private static function reset_error_messages() {
+        return [
+            'maintenance_busy' => 'Εκτελείται ήδη καθαρισμός. Δοκιμάστε ξανά σε λίγο.',
+            'accounts_busy' => 'Υπάρχει ενεργό αίτημα που ενημερώνει λίστα ή υποβολή. Δοκιμάστε ξανά όταν ολοκληρωθεί.',
+            'active_batches' => 'Υπάρχουν ενεργές υποβολές. Ολοκληρώστε ή ακυρώστε τις από το My List πριν από τον καθαρισμό.',
+            'schema_error' => 'Ο καθαρισμός σταμάτησε λόγω προβλήματος στη δομή των πινάκων (απαιτείται InnoDB και πλήρη indexes).',
+            'database_error' => 'Παρουσιάστηκε σφάλμα βάσης δεδομένων και έγινε πλήρης επαναφορά (rollback).',
+            'invalid_confirmation' => 'Πληκτρολογήστε CLEAR με κεφαλαία γράμματα για να επιβεβαιώσετε τη διαγραφή.',
+        ];
+    }
+
+    private static function render_reset_notice() {
+        $reset = isset( $_GET['reset'] ) && is_string( $_GET['reset'] ) ? $_GET['reset'] : '';
+        if ( $reset === 'done' ) {
+            ?>
+            <div class="notice notice-success is-dismissible b2b-admin-notice" role="status">
+                <p><strong>Ο καθαρισμός της σεζόν ολοκληρώθηκε επιτυχώς.</strong> Όλες οι λίστες προπαραγγελίας, τα σχόλια προσχεδίου και το ιστορικό batches διαγράφηκαν για αυτό το site.</p>
+            </div>
+            <?php
+        } elseif ( $reset === 'failed' ) {
+            $reason = isset( $_GET['reason'] ) && is_string( $_GET['reason'] ) ? $_GET['reason'] : '';
+            $messages = self::reset_error_messages();
+            $text = $messages[ $reason ] ?? 'Ο καθαρισμός δεν ολοκληρώθηκε. Ελέγξτε την κατάσταση των πινάκων και δοκιμάστε ξανά.';
+            ?>
+            <div class="notice notice-error is-dismissible b2b-admin-notice" role="alert">
+                <p><strong>Ο καθαρισμός δεν ολοκληρώθηκε:</strong> <?php echo esc_html( $text ); ?></p>
+            </div>
+            <?php
+        }
     }
 
     public static function render() {
-        if ( ! current_user_can( 'manage_options' ) ) { wp_die( 'Δεν έχετε δικαίωμα διαχείρισης αυτών των ρυθμίσεων.' ); }
+        if ( ! current_user_can( 'manage_options' ) ) {
+            wp_die( 'Δεν έχετε δικαίωμα διαχείρισης αυτών των ρυθμίσεων.' );
+        }
         $settings = self::get();
-        $tab = isset( $_GET['tab'] ) && is_string( $_GET['tab'] ) && in_array( $_GET['tab'], [ 'overview', 'appearance', 'data' ], true ) ? $_GET['tab'] : 'overview';
+        $tab = isset( $_GET['tab'] ) && is_string( $_GET['tab'] ) && in_array( $_GET['tab'], [ 'overview', 'appearance', 'data' ], true )
+            ? $_GET['tab']
+            : 'overview';
         ?>
         <div class="wrap b2b-settings">
             <h1>B2B Matrix</h1>
@@ -106,12 +173,26 @@ class B2B_Matrix_Settings {
                     <a href="<?php echo esc_url( admin_url( 'admin.php?page=b2b-matrix&tab=' . $key ) ); ?>" <?php if ( $tab === $key ) { echo 'aria-current="page"'; } ?>><?php echo esc_html( $label ); ?></a>
                 <?php endforeach; ?>
             </nav>
-            <?php settings_errors(); ?>
+            <?php
+            settings_errors();
+            self::render_reset_notice();
+            ?>
             <?php if ( $tab === 'overview' ) : ?>
-                <section class="b2b-settings-card"><h2>Λίστες πελατών</h2><p>Κάθε συνδεδεμένος πελάτης αποθηκεύει τις επιλογές του από τον πίνακα προϊόντος ή το My List. Οι υποβολές δημιουργούνται σε διαδοχικά βήματα με δυνατότητα συνέχισης.</p></section>
+                <section class="b2b-settings-card">
+                    <h2>Λίστες πελατών</h2>
+                    <p>Κάθε συνδεδεμένος πελάτης αποθηκεύει τις επιλογές του από τον πίνακα προϊόντος ή το My List. Οι υποβολές δημιουργούνται σε διαδοχικά βήματα με δυνατότητα συνέχισης.</p>
+                </section>
                 <div class="b2b-admin-grid">
-                    <section class="b2b-settings-card"><h2>Εμφάνιση</h2><p>Χρώμα, γραμματοσειρά, γωνίες και άνοιγμα εικόνων.</p><a class="button" href="<?php echo esc_url( admin_url( 'admin.php?page=b2b-matrix&tab=appearance' ) ); ?>">Ρύθμιση εμφάνισης</a></section>
-                    <section class="b2b-settings-card"><h2>Πίνακες & σεζόν</h2><p>Έλεγχος δομής και εγγραφών, καθώς και χειροκίνητος καθαρισμός στο τέλος της σεζόν.</p><a class="button" href="<?php echo esc_url( admin_url( 'admin.php?page=b2b-matrix&tab=data' ) ); ?>">Διαχείριση πινάκων</a></section>
+                    <section class="b2b-settings-card">
+                        <h2>Εμφάνιση</h2>
+                        <p>Χρώμα, γραμματοσειρά, γωνίες και άνοιγμα εικόνων.</p>
+                        <a class="button" href="<?php echo esc_url( admin_url( 'admin.php?page=b2b-matrix&tab=appearance' ) ); ?>">Ρύθμιση εμφάνισης</a>
+                    </section>
+                    <section class="b2b-settings-card">
+                        <h2>Πίνακες & σεζόν</h2>
+                        <p>Έλεγχος δομής και εγγραφών, καθώς και χειροκίνητος καθαρισμός στο τέλος της σεζόν.</p>
+                        <a class="button" href="<?php echo esc_url( admin_url( 'admin.php?page=b2b-matrix&tab=data' ) ); ?>">Διαχείριση πινάκων</a>
+                    </section>
                 </div>
                 <p class="description">Οι κατάλογοι είναι ορατοί σε επισκέπτες. Η αποθήκευση απαιτεί σύνδεση. Η ιδιωτική πρόσβαση σε ολόκληρο το site ρυθμίζεται από το αντίστοιχο plugin του καταστήματος.</p>
             <?php elseif ( $tab === 'data' ) : self::render_data(); else : ?>
@@ -120,14 +201,20 @@ class B2B_Matrix_Settings {
 
                 <fieldset class="b2b-settings-card">
                     <legend>Άνοιγμα εικόνων</legend>
-                    <label><input type="radio" name="b2b_matrix_appearance[lightbox]" value="site" <?php checked( $settings['lightbox'], 'site' ); ?>> Lightbox του site / WooCommerce (προεπιλογή)</label>
+                    <label>
+                        <input type="radio" name="b2b_matrix_appearance[lightbox]" value="site" <?php checked( $settings['lightbox'], 'site' ); ?>>
+                        Lightbox του site / WooCommerce (προεπιλογή)
+                    </label>
                     <p class="description">Χρησιμοποιεί το διαθέσιμο WooCommerce PhotoSwipe. Αν δεν υπάρχει συμβατό lightbox στη σελίδα, ανοίγει αυτόματα το lightbox του plugin.</p>
-                    <label><input type="radio" name="b2b_matrix_appearance[lightbox]" value="plugin" <?php checked( $settings['lightbox'], 'plugin' ); ?>> Lightbox του plugin</label>
+                    <label>
+                        <input type="radio" name="b2b_matrix_appearance[lightbox]" value="plugin" <?php checked( $settings['lightbox'], 'plugin' ); ?>>
+                        Lightbox του plugin
+                    </label>
                 </fieldset>
 
                 <fieldset class="b2b-settings-card">
                     <legend>Βασικό χρώμα</legend>
-                    <p>Χρώμα για αποθήκευση, επιλογές και εστίαση. Η επιτυχία παραμένει πράσινη και τα σφάλματα κόκκινα.</p>
+                    <p>Χρώμα για αποθήκευση, επιλογές και εστίαση. Η επιτυχία παραμένει πράσινη και τα σφάλματα κόκκινα. Σε ανοιχτόχρωμο HEX προσαρμόζεται αυτόματα η αντίθεση γραμματοσειράς και περιγράμματος.</p>
                     <div class="b2b-palette-options">
                         <?php foreach ( self::palettes() as $key => $palette ) : ?>
                             <label class="b2b-palette-choice">
@@ -144,9 +231,21 @@ class B2B_Matrix_Settings {
                     </div>
                     <div class="b2b-custom-color-wrap">
                         <label class="screen-reader-text" for="b2b_custom_color_picker">Επιλογή προσαρμοσμένου χρώματος</label>
-                        <input type="color" id="b2b_custom_color_picker" value="<?php echo esc_attr( $settings['custom_color'] ?: '#4f46e5' ); ?>" onchange="document.getElementById('b2b_custom_color_hex').value = this.value; document.getElementById('b2b-custom-swatch').style.backgroundColor = this.value; document.querySelector('input[value=custom]').checked = true;">
+                        <input
+                            type="color"
+                            id="b2b_custom_color_picker"
+                            value="<?php echo esc_attr( $settings['custom_color'] ?: '#4f46e5' ); ?>"
+                        >
                         <label class="screen-reader-text" for="b2b_custom_color_hex">Κωδικός χρώματος HEX</label>
-                        <input type="text" id="b2b_custom_color_hex" name="b2b_matrix_appearance[custom_color]" value="<?php echo esc_attr( $settings['custom_color'] ?: '#4f46e5' ); ?>" pattern="^#([A-Fa-f0-9]{6})$" placeholder="#4f46e5" oninput="if(/^#([A-Fa-f0-9]{6})$/.test(this.value)){ document.getElementById('b2b_custom_color_picker').value = this.value; document.getElementById('b2b-custom-swatch').style.backgroundColor = this.value; document.querySelector('input[value=custom]').checked = true; }">
+                        <input
+                            type="text"
+                            id="b2b_custom_color_hex"
+                            name="b2b_matrix_appearance[custom_color]"
+                            value="<?php echo esc_attr( $settings['custom_color'] ?: '#4f46e5' ); ?>"
+                            pattern="^#([A-Fa-f0-9]{6})$"
+                            placeholder="#4f46e5"
+                        >
+                        <span id="b2b-contrast-badge" class="b2b-contrast-badge" aria-live="polite"></span>
                         <small class="description">Επιλέξτε με το εργαλείο χρώματος ή πληκτρολογήστε κωδικό HEX (π.χ. #2563eb)</small>
                     </div>
                 </fieldset>
@@ -164,8 +263,16 @@ class B2B_Matrix_Settings {
                 <fieldset class="b2b-settings-card">
                     <legend>Γωνίες</legend>
                     <div class="b2b-radius-options">
-                        <label><input type="radio" name="b2b_matrix_appearance[radius]" value="rounded" <?php checked( $settings['radius'], 'rounded' ); ?>><span class="b2b-radius-sample" aria-hidden="true"></span><span>Στρογγυλεμένες<small>Τρέχον design · προεπιλογή</small></span></label>
-                        <label><input type="radio" name="b2b_matrix_appearance[radius]" value="square" <?php checked( $settings['radius'], 'square' ); ?>><span class="b2b-radius-sample b2b-square" aria-hidden="true"></span><span>Τετράγωνες<small>Radius 0 · πίνακας, πεδία, κουμπιά και διάλογοι</small></span></label>
+                        <label>
+                            <input type="radio" name="b2b_matrix_appearance[radius]" value="rounded" <?php checked( $settings['radius'], 'rounded' ); ?>>
+                            <span class="b2b-radius-sample" aria-hidden="true"></span>
+                            <span>Στρογγυλεμένες<small>Τρέχον design · προεπιλογή</small></span>
+                        </label>
+                        <label>
+                            <input type="radio" name="b2b_matrix_appearance[radius]" value="square" <?php checked( $settings['radius'], 'square' ); ?>>
+                            <span class="b2b-radius-sample b2b-square" aria-hidden="true"></span>
+                            <span>Τετράγωνες<small>Radius 0 · πίνακας, πεδία, κουμπιά και διάλογοι</small></span>
+                        </label>
                     </div>
                 </fieldset>
 
@@ -190,35 +297,53 @@ class B2B_Matrix_Settings {
         </section>
         <div class="b2b-admin-grid">
         <?php foreach ( $tables as $name => $table ) : $status = $table['status']; ?>
-            <section class="b2b-settings-card"><h2><?php echo esc_html( $table['label'] ); ?></h2><code class="b2b-table-name"><?php echo esc_html( $name ); ?></code>
+            <section class="b2b-settings-card">
+                <h2><?php echo esc_html( $table['label'] ); ?></h2>
+                <code class="b2b-table-name"><?php echo esc_html( $name ); ?></code>
                 <dl class="b2b-data-stats">
                     <dt>Engine</dt><dd><?php echo esc_html( $status['Engine'] ?? '—' ); ?></dd>
                     <dt>Εγγραφές<?php echo $checked ? '' : ' (εκτίμηση)'; ?></dt><dd><?php echo esc_html( $checked ? ( $table['rows'] ?? '—' ) : ( $status['Rows'] ?? '—' ) ); ?></dd>
                     <dt>Δεδομένα & indexes</dt><dd><?php echo esc_html( size_format( (int) ( $status['Data_length'] ?? 0 ) + (int) ( $status['Index_length'] ?? 0 ) ) ); ?></dd>
-                    <?php if ( isset( $table['active'] ) ) : ?><dt>Ενεργές υποβολές</dt><dd><?php echo (int) $table['active']; ?></dd><?php endif; ?>
+                    <?php if ( isset( $table['active'] ) ) : ?>
+                        <dt>Ενεργές υποβολές</dt><dd><?php echo (int) $table['active']; ?></dd>
+                    <?php endif; ?>
                     <?php if ( ! empty( $table['history'] ) ) : $history = $table['history']; ?>
                         <dt>Ολοκληρωμένες</dt><dd><?php echo (int) $history['complete']; ?></dd>
                         <dt>Αποτυχημένες</dt><dd><?php echo (int) $history['failed']; ?></dd>
                         <dt>Ακυρωμένες</dt><dd><?php echo (int) $history['cancelled']; ?></dd>
                     <?php endif; ?>
                 </dl>
-                <?php if ( ! empty( $table['history']['oldest'] ) ) : ?><p class="description">Πρώτη υποβολή: <?php echo esc_html( $table['history']['oldest'] ); ?><br>Τελευταία ενημέρωση: <?php echo esc_html( $table['history']['latest'] ); ?></p><?php endif; ?>
-                <?php if ( $table['issues'] ) : ?><ul class="b2b-data-issues"><?php foreach ( $table['issues'] as $issue ) : ?><li><?php echo esc_html( $issue ); ?></li><?php endforeach; ?></ul>
-                <?php else : ?><p class="b2b-data-ok"><?php echo $checked ? 'Ο έλεγχος ολοκληρώθηκε χωρίς ευρήματα.' : 'Η δομή είναι συμβατή.'; ?></p><?php endif; ?>
+                <?php if ( ! empty( $table['history']['oldest'] ) ) : ?>
+                    <p class="description">Πρώτη υποβολή: <?php echo esc_html( $table['history']['oldest'] ); ?><br>Τελευταία ενημέρωση: <?php echo esc_html( $table['history']['latest'] ); ?></p>
+                <?php endif; ?>
+                <?php if ( $table['issues'] ) : ?>
+                    <ul class="b2b-data-issues">
+                        <?php foreach ( $table['issues'] as $issue ) : ?>
+                            <li><?php echo esc_html( $issue ); ?></li>
+                        <?php endforeach; ?>
+                    </ul>
+                <?php else : ?>
+                    <p class="b2b-data-ok"><?php echo $checked ? 'Ο έλεγχος ολοκληρώθηκε χωρίς ευρήματα.' : 'Η δομή είναι συμβατή.'; ?></p>
+                <?php endif; ?>
             </section>
         <?php endforeach; ?>
         </div>
         <section class="b2b-settings-card b2b-danger-zone">
             <h2>Τέλος σεζόν · καθαρισμός και των τριών πινάκων</h2>
-            <p>Διαγράφει <strong>όλες τις λίστες όλων των πελατών</strong> , <strong>τα αποθηκευμένα σχόλια</strong> και <strong>όλο το ιστορικό batches</strong>, μαζί με snapshots, αποτυχίες και ακυρώσεις, μόνο για αυτό το site. Οι πίνακες και οι ρυθμίσεις τους διατηρούνται. Οι παραγγελίες WooCommerce παραμένουν.</p>
+            <p>Διαγράφει <strong>όλες τις λίστες όλων των πελατών</strong>, <strong>τα αποθηκευμένα σχόλια</strong> και <strong>όλο το ιστορικό batches</strong>, μαζί με snapshots, αποτυχίες και ακυρώσεις, μόνο για αυτό το site. Οι πίνακες και οι ρυθμίσεις τους διατηρούνται. Οι παραγγελίες WooCommerce παραμένουν.</p>
             <p>Μπορείτε να κρατήσετε δεδομένα για περισσότερες σεζόν και να καθαρίσετε όποτε επιλέξετε. Για σύγκριση μετά τη διαγραφή, κρατήστε πρώτα αντίγραφο βάσης. Δεν υπάρχει αυτόματος καθαρισμός ανά εξάμηνο ούτε αναίρεση.</p>
             <p>Οι ενεργές υποβολές πρέπει πρώτα να ολοκληρωθούν ή να ακυρωθούν από το My List. Ανοιχτές καρτέλες πελατών χρειάζονται ανανέωση μετά τον καθαρισμό. Παλαιά δεδομένα migration δεν θα εισαχθούν ξανά σε αυτό το site.</p>
-            <?php if ( $last_reset ) : ?><p>Τελευταίος επιτυχής καθαρισμός: <strong><?php echo esc_html( $last_reset ); ?></strong></p><?php endif; ?>
+            <?php if ( $last_reset ) : ?>
+                <p>Τελευταίος επιτυχής καθαρισμός: <strong><?php echo esc_html( $last_reset ); ?></strong></p>
+            <?php endif; ?>
             <form action="<?php echo esc_url( admin_url( 'admin-post.php' ) ); ?>" method="post">
                 <input type="hidden" name="action" value="b2b_matrix_reset_season">
                 <?php wp_nonce_field( 'b2b_matrix_reset_season' ); ?>
                 <label for="b2b-reset-confirmation">Πληκτρολογήστε <strong>CLEAR</strong> για να επιβεβαιώσετε τη διαγραφή</label>
-                <div class="b2b-reset-controls"><input id="b2b-reset-confirmation" name="confirmation" type="text" pattern="CLEAR" required autocomplete="off" spellcheck="false"><button type="submit" class="button b2b-danger-button">Καθαρισμός σεζόν</button></div>
+                <div class="b2b-reset-controls">
+                    <input id="b2b-reset-confirmation" name="confirmation" type="text" pattern="CLEAR" required autocomplete="off" spellcheck="false">
+                    <button type="submit" class="button b2b-danger-button">Καθαρισμός σεζόν</button>
+                </div>
             </form>
         </section>
         <?php

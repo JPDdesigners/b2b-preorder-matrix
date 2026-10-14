@@ -2,7 +2,7 @@
 /**
  * Plugin Name: B2B Pre-Order Matrix API
  * Description: Private pre-order quantities and a cache-safe Vue matrix for WooCommerce.
- * Version: 3.6.1
+ * Version: 3.7.0
  * Requires at least: 6.5
  * Requires PHP: 7.4
  * Requires Plugins: woocommerce
@@ -10,7 +10,7 @@
  * License URI: https://www.gnu.org/licenses/old-licenses/gpl-2.0.html
  */
 if ( ! defined( 'ABSPATH' ) ) { exit; }
-if ( ! defined( 'B2B_MATRIX_VERSION' ) ) { define( 'B2B_MATRIX_VERSION', '3.6.1' ); }
+if ( ! defined( 'B2B_MATRIX_VERSION' ) ) { define( 'B2B_MATRIX_VERSION', '3.7.0' ); }
 if ( ! defined( 'B2B_MATRIX_PLUGIN_FILE' ) ) { define( 'B2B_MATRIX_PLUGIN_FILE', __FILE__ ); }
 add_action( 'before_woocommerce_init', static function() {
     if ( class_exists( '\\Automattic\\WooCommerce\\Utilities\\FeaturesUtil' ) ) {

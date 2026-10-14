@@ -12,7 +12,8 @@ FILES = [
     'includes/class-b2b-matrix-maintenance.php',
     'includes/class-b2b-matrix-catalog.php', 'includes/class-b2b-order-channel.php',
     'includes/class-b2b-preorder-list.php', 'includes/class-b2b-preorder-submission.php',
-    'assets/admin-settings.css', 'b2b-matrix/dist/matrix-app.js',
+    'assets/admin-settings.css', 'assets/admin-settings.js',
+    'b2b-matrix/dist/matrix-app.js',
     'b2b-matrix/dist/matrix-style.css',
     'licenses/vue-MIT.txt', 'licenses/pinia-MIT.txt',
 ]

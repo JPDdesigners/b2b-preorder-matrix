@@ -1,0 +1,109 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+    tags: ['v*']
+  pull_request:
+    branches: [main]
+
+jobs:
+  frontend:
+    name: Frontend Tests & Bundle Check
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+          cache-dependency-path: b2b-matrix/package-lock.json
+
+      - name: Install dependencies
+        working-directory: b2b-matrix
+        run: npm ci
+
+      - name: Run frontend unit tests
+        working-directory: b2b-matrix
+        run: node --test tests/*.test.js
+
+      - name: Build production bundle and verify dist is up to date
+        run: |
+          npm --prefix b2b-matrix run build
+          git diff --exit-code b2b-matrix/dist
+
+  php:
+    name: PHP ${{ matrix.php }} Syntax & Test Suites
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        php: ['7.4', '8.1', '8.2', '8.3']
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Setup PHP ${{ matrix.php }}
+        uses: shivammathur/setup-php@v2
+        with:
+          php-version: ${{ matrix.php }}
+          coverage: none
+
+      - name: Lint PHP files
+        run: |
+          for file in b2b-matrix-api.php uninstall.php includes/*.php tests/*.php; do
+            php -l "$file"
+          done
+
+      - name: Run PHP test suites
+        run: |
+          php tests/backend.php
+          php tests/settings.php
+          php tests/preorder-list.php
+          php tests/uninstall.php
+          php tests/catalog-search.php
+          php tests/my-list-load-generator.php
+
+  release-integrity:
+    name: Version Sync & Release Archive Check
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Verify version synchronization across files
+        run: |
+          python - <<'PY'
+          import json, pathlib, re, sys
+
+          root = pathlib.Path('.')
+          plugin = (root / 'b2b-matrix-api.php').read_text(encoding='utf-8')
+          header_ver = re.search(r'^\s*\*\s*Version:\s*(\d+\.\d+\.\d+)\s*$', plugin, re.M)
+          const_ver = re.search(r"define\(\s*'B2B_MATRIX_VERSION',\s*'(\d+\.\d+\.\d+)'\s*\)", plugin)
+          pkg_ver = json.loads((root / 'b2b-matrix' / 'package.json').read_text(encoding='utf-8'))['version']
+          readme = (root / 'README.md').read_text(encoding='utf-8')
+          readme_ver = re.search(r'^# B2B Order List Matrix (\d+\.\d+\.\d+)$', readme, re.M)
+          zip_ver = re.search(r'releases/b2b-preorder-matrix-(\d+\.\d+\.\d+)\.zip', readme)
+
+          versions = {
+              'b2b-matrix-api.php (Header)': header_ver.group(1) if header_ver else None,
+              'b2b-matrix-api.php (Constant)': const_ver.group(1) if const_ver else None,
+              'b2b-matrix/package.json': pkg_ver,
+              'README.md (Heading)': readme_ver.group(1) if readme_ver else None,
+              'README.md (Release ZIP)': zip_ver.group(1) if zip_ver else None,
+          }
+          print('Detected versions:', versions)
+          if len(set(versions.values())) != 1 or None in versions.values():
+              sys.exit(f'Version mismatch across project files: {versions}')
+          PY
+
+      - name: Verify deterministic release archive build
+        run: python tools/build_release.py --force

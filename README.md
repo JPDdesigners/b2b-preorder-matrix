@@ -1,4 +1,17 @@
-# B2B Order List Matrix 3.6.1
+# B2B Order List Matrix 3.7.0
+
+## Modern SaaS My List redesign, Gesture Help modal, Custom Accent contrast, Admin notices & CI — 3.7.0
+
+- **My List SaaS Redesign & Component Architecture:** `OrderListPage.vue` is now modularized into focused components (`CatalogSearch.vue`, `ListFilters.vue`, `ProductListViewport.vue`, `OrderSummarySidebar.vue`, and `SubmissionProgress.vue`) with a clean, compact SaaS interface:
+  - Unified top workspace bar combining the page title, live inline KPI badges (`Κωδικοί`, `Τεμάχια`, `Σύνολο`), and the Quick Add catalog search bar.
+  - Streamlined 2-row filter toolbar with category tabs, subcategory dropdown, in-list search, inline filtered subtotal pill, and the 2-step typed `delete` Empty List action.
+  - Compact virtualized product cards (`96px` desktop row height) with crisp thumbnail badges, brand/SKU pills, tabular quantity and value columns, and action buttons.
+  - Compact sticky summary sidebar with customer details, autosaved plain-text order notes, and dark total panel.
+- **Shared Matrix Footer (`MatrixFooter.vue`):** Unified footer component shared by both the single-product matrix (`App.vue`) and the My List modal editor (`MatrixModal.vue`).
+- **Gesture & Shortcut Help Modal (`GestureHelpModal.vue`):** Added an `ⓘ Οδηγίες` button in the matrix header that opens a clean modal explaining touch (`Tap = +1`, `Hold 0.5s = πληκτρολόγηση`), desktop mouse wheel (`±1`), and size-curve (`− / +`) controls.
+- **WCAG Contrast Protection for Custom HEX Accents:** `theme.js` computes relative luminance for custom HEX colors and emits contrast-safe `--b2b-on-primary`, `--b2b-focus-ring`, and `--b2b-primary-ink` tokens so pale or white custom accents automatically use dark readable text and visible focus rings.
+- **Season Reset Admin Notices & External Admin Script:** `B2B_Matrix_Settings` displays native WordPress `.notice-success` and `.notice-error` banners after season reset actions, and moves custom color picker logic from inline HTML attributes to `assets/admin-settings.js` with live contrast feedback.
+- **GitHub Actions CI (`.github/workflows/ci.yml`):** Automated pipeline running frontend unit tests, production bundle verification, PHP 7.4–8.3 syntax and test suites, version synchronization checks, and deterministic release ZIP verification.
 
 ## Type-to-confirm Empty List and sticky size header — 3.6.0
 
@@ -53,6 +66,7 @@ b2b-preorder-matrix/
   includes/class-b2b-preorder-list.php
   includes/class-b2b-preorder-submission.php
   assets/admin-settings.css
+  assets/admin-settings.js
   b2b-matrix/dist/matrix-app.js
   b2b-matrix/dist/matrix-style.css
   README.md
@@ -75,7 +89,7 @@ cd ..
 python tools/build_release.py
 ```
 
-The uploadable ZIP is `releases/b2b-preorder-matrix-3.6.1.zip`, with a single `b2b-preorder-matrix/` root. The packaging script checks every ZIP entry against its source bytes and excludes tests, dependencies and local files. Use `--force` to replace a previously built ZIP. Rebuild Vue after editing `.vue` or JavaScript source; packaging by itself uses the current committed `dist` assets. The automatic GitHub source archive contains the development repository; use the named plugin ZIP attached to the release for WordPress upload.
+The uploadable ZIP is `releases/b2b-preorder-matrix-3.7.0.zip`, with a single `b2b-preorder-matrix/` root. The packaging script checks every ZIP entry against its source bytes and excludes tests, dependencies and local files. Use `--force` to replace a previously built ZIP. Rebuild Vue after editing `.vue` or JavaScript source; packaging by itself uses the current committed `dist` assets. The automatic GitHub source archive contains the development repository; use the named plugin ZIP attached to the release for WordPress upload.
 
 Own plugin code is licensed under GPL-2.0-or-later; see [LICENSE](LICENSE). Bundled Vue and Pinia retain their MIT licenses, included in `licenses/`.
 

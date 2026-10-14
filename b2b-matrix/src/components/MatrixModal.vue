@@ -3,7 +3,13 @@
     <div class="b2b-matrix-modal-dialog">
       <!-- Modal Header -->
       <div class="b2b-matrix-modal-header">
-        <div class="modal-heading"><button type="button" class="back-to-list" @click="$emit('close')"><UiIcon name="chevron-left" />Πίσω στη λίστα</button><span>Επεξεργασία ποσοτήτων</span></div>
+        <div class="modal-heading">
+          <button type="button" class="back-to-list" @click="$emit('close')">
+            <UiIcon name="chevron-left" />
+            Πίσω στη λίστα
+          </button>
+          <span>Επεξεργασία ποσοτήτων</span>
+        </div>
         <button
           type="button"
           class="b2b-modal-close-btn"
@@ -28,7 +34,9 @@
           <div v-if="store.loadError" class="empty-state" role="alert">
             <h3>Δεν φορτώθηκε η λίστα</h3>
             <p>{{ store.loadError }}</p>
-            <B2BButton variant="primary" size="md" @click="store.fetchMatrix()">Νέα προσπάθεια</B2BButton>
+            <B2BButton variant="primary" size="md" @click="store.fetchMatrix()">
+              Νέα προσπάθεια
+            </B2BButton>
           </div>
 
           <div v-else-if="store.loading && !store.data" class="loading-state" role="status">
@@ -37,69 +45,26 @@
           </div>
 
           <template v-else-if="store.data">
-            <div v-if="store.ready && store.unavailableCount" class="unavailable-notice" role="status">
+            <div
+              v-if="store.ready && store.unavailableCount"
+              class="unavailable-notice"
+              role="status"
+            >
               {{ store.unavailableCount }} αποθηκευμένες παραλλαγές δεν εμφανίζονται πλέον στον πίνακα.
             </div>
+
             <MatrixTable :store="store" :pending="store.loading || !store.ready" />
+
             <div v-if="store.ready && !store.cells.length" class="empty-state">
               Δεν υπάρχουν συνδυασμοί χρώματος και μεγέθους.
             </div>
 
-            <!-- Footer of MatrixTable -->
-            <footer class="matrix-footer">
-              <div class="order-summary">
-                <span class="summary-label">Σύνολο επιλογής · συνολική αξία</span>
-                <div v-if="store.ready" class="summary-numbers">
-                  <strong>{{ store.totalQty }} <small>τεμ.</small></strong>
-                  <span class="summary-divider"></span>
-                  <strong>{{ store.totalPrice }}</strong>
-                </div>
-                <div v-else class="summary-numbers">
-                  <span class="summary-skeleton"></span>
-                  <span class="summary-divider"></span>
-                  <span class="summary-skeleton"></span>
-                </div>
-                <p v-if="store.ready && (store.hasExistingItems || store.isDirty)" class="previous-total">
-                  Αποθηκευμένα: {{ store.previousTotalQty }} τεμ. <span>·</span> {{ store.previousTotalPrice }}
-                  <B2BBadge v-if="store.isDirty" variant="primary" size="sm">
-                    {{ store.deltaQty > 0 ? '+' : '' }}{{ store.deltaQty }} τεμ. / {{ store.deltaPrice }}
-                  </B2BBadge>
-                </p>
-              </div>
-
-              <div class="footer-actions">
-                <span
-                  class="save-state"
-                  :class="{
-                    'is-pending': store.ready && store.isDirty,
-                    'is-error': store.feedbackStatus === 'error',
-                    'is-success': store.ready && store.canSave && !store.isDirty && store.feedbackStatus !== 'error'
-                  }"
-                  role="status"
-                >
-                  <UiIcon :name="store.feedbackStatus === 'error' ? 'alert' : !store.ready || store.isDirty ? 'clock' : 'check-circle'" />
-                  {{
-                    !store.ready ? 'Φόρτωση ποσοτήτων και τιμών…' :
-                    store.isSubmitting ? 'Αποθήκευση…' :
-                    store.feedbackStatus === 'error' ? (store.feedbackMsg || 'Ελέγξτε τις αλλαγές σας') :
-                    store.isDirty ? 'Μη αποθηκευμένες αλλαγές' : 'Η λίστα είναι ενημερωμένη'
-                  }}
-                </span>
-
-                <B2BButton
-                  variant="primary"
-                  size="lg"
-                  :disabled="!store.ready || !store.canSave || !store.isDirty || store.isSubmitting"
-                  :loading="store.isSubmitting"
-                  @click="handleSave"
-                >
-                  <template #icon>
-                    <UiIcon :name="!store.isDirty && store.feedbackStatus === 'success' ? 'check' : 'save'" />
-                  </template>
-                  {{ store.isSubmitting ? 'Αποθήκευση…' : !store.isDirty && store.feedbackStatus === 'success' ? 'Αποθηκεύτηκε' : 'Αποθήκευση' }}
-                </B2BButton>
-              </div>
-            </footer>
+            <MatrixFooter
+              :store="store"
+              compact
+              save-label="Αποθήκευση"
+              @save="handleSave"
+            />
           </template>
         </section>
       </div>
@@ -112,8 +77,8 @@ import { computed, provide, ref, onMounted, onUnmounted } from 'vue';
 import { appearanceStyle, SYSTEM_FONT, THEME_KEY } from '../theme.js';
 import UiIcon from './UiIcon.vue';
 import B2BButton from './ui/B2BButton.vue';
-import B2BBadge from './ui/B2BBadge.vue';
 import MatrixTable from './MatrixTable.vue';
+import MatrixFooter from './MatrixFooter.vue';
 import ImageLightbox from './ImageLightbox.vue';
 import DialogModal from './DialogModal.vue';
 
@@ -130,15 +95,19 @@ provide(THEME_KEY, themeStyle);
 // so there is always a place to scroll that can never change a quantity.
 const app = ref(null);
 function forwardWheel(event) {
-  const root = app.value, scroller = root?.querySelector('.matrix-table-outer');
+  const root = app.value;
+  const scroller = root?.querySelector('.matrix-table-outer');
   if (!root || !scroller || event.defaultPrevented || event.ctrlKey || event.metaKey) return;
-  if (scroller.contains(event.target) || event.target.closest?.('dialog') !== root.closest('dialog')) return;
+  if (scroller.contains(event.target) || event.target.closest?.('dialog') !== root.closest('dialog')) {
+    return;
+  }
   const unit = event.deltaMode === 1 ? 16 : event.deltaMode === 2 ? scroller.clientHeight : 1;
   const top = (event.shiftKey ? 0 : event.deltaY) * unit;
   if (!top) return;
   event.preventDefault();
   scroller.scrollBy({ top });
 }
+
 onMounted(() => window.addEventListener('wheel', forwardWheel, { passive: false }));
 onUnmounted(() => window.removeEventListener('wheel', forwardWheel));
 
@@ -171,11 +140,46 @@ async function handleSave() {
   overflow: hidden;
   border-inline: 1px solid #e2e8f0;
 }
-.modal-heading { display: flex; align-items: center; gap: 18px; min-width: 0; }
-.modal-heading > span { color: #64748b; font-size: 12px; font-weight: 600; }
-.back-to-list { display: inline-flex; align-items: center; gap: 8px; min-height: 44px; padding: 0 14px; border: 1px solid #cbd5e1; border-radius: var(--b2b-radius, 8px); background: #fff; color: #1e293b; font: inherit; font-size: 13px; font-weight: 700; cursor: pointer; }
-.back-to-list:hover { background: #f8fafc; border-color: var(--b2b-primary-border); color: var(--b2b-primary); }
-.back-to-list :deep(svg) { width: 17px; height: 17px; }
+
+.modal-heading {
+  display: flex;
+  align-items: center;
+  gap: 18px;
+  min-width: 0;
+}
+
+.modal-heading > span {
+  color: #64748b;
+  font-size: 12px;
+  font-weight: 600;
+}
+
+.back-to-list {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  min-height: 44px;
+  padding: 0 14px;
+  border: 1px solid #cbd5e1;
+  border-radius: var(--b2b-radius, 8px);
+  background: #ffffff;
+  color: #1e293b;
+  font: inherit;
+  font-size: 13px;
+  font-weight: 700;
+  cursor: pointer;
+}
+
+.back-to-list:hover {
+  background: #f8fafc;
+  border-color: var(--b2b-primary-border);
+  color: var(--b2b-primary-ink, var(--b2b-primary));
+}
+
+.back-to-list :deep(svg) {
+  width: 17px;
+  height: 17px;
+}
 
 .b2b-matrix-modal-header {
   padding: 16px 24px;
@@ -223,7 +227,7 @@ async function handleSave() {
   min-height: 0;
   width: 100%;
   color: #0f172a;
-  background: #fff;
+  background: #ffffff;
   border: 0;
   border-radius: 0;
   margin: 0;
@@ -232,6 +236,7 @@ async function handleSave() {
   font-variant-numeric: tabular-nums;
   box-sizing: border-box;
 }
+
 /* One vertical scroller: the editor body. The top bar (Back/X) and the footer stay fixed around it,
    and the docked size header locks at its top edge while colours scroll underneath. */
 .b2b-matrix-app :deep(.matrix-table-outer) {
@@ -241,9 +246,15 @@ async function handleSave() {
   overscroll-behavior-y: contain;
   -webkit-overflow-scrolling: touch;
 }
+
 .b2b-matrix-app > .loading-state,
-.b2b-matrix-app > .empty-state { overflow-y: auto; }
-.unavailable-notice { flex-shrink: 0; }
+.b2b-matrix-app > .empty-state {
+  overflow-y: auto;
+}
+
+.unavailable-notice {
+  flex-shrink: 0;
+}
 
 .b2b-matrix-app :deep(table) {
   border: 0 !important;
@@ -260,101 +271,6 @@ async function handleSave() {
 .b2b-matrix-app :deep(label),
 .b2b-matrix-app :deep(select) {
   font-family: inherit;
-}
-
-.matrix-footer {
-  flex: 0 0 auto;
-  box-shadow: 0 -4px 16px rgba(15,23,42,.06);
-  background: #f8fafc;
-  padding: 22px 24px;
-  display: flex;
-  align-items: flex-end;
-  justify-content: space-between;
-  flex-wrap: wrap;
-  gap: 20px 24px;
-  border-top: 1px solid #e2e8f0;
-}
-
-.order-summary {
-  display: flex;
-  flex-direction: column;
-}
-
-.summary-label {
-  color: #64748b;
-  font-size: 11px;
-  font-weight: 600;
-  text-transform: uppercase;
-  letter-spacing: .05em;
-}
-
-.summary-numbers {
-  display: flex;
-  gap: 18px;
-  align-items: center;
-  margin-top: 6px;
-}
-
-.summary-numbers strong {
-  font-size: 26px;
-  font-weight: 700;
-  letter-spacing: -.5px;
-  line-height: 1.2;
-  color: #0f172a;
-}
-
-.summary-numbers small {
-  font-size: 13px;
-  font-weight: 500;
-  color: #64748b;
-}
-
-.summary-divider {
-  width: 1px;
-  height: 24px;
-  background: #cbd5e1;
-}
-
-.previous-total {
-  font-size: 12px;
-  color: #64748b;
-  margin: 6px 0 0;
-  display: flex;
-  align-items: center;
-  gap: 6px;
-}
-
-.footer-actions {
-  display: flex;
-  align-items: center;
-  gap: 16px;
-  flex-wrap: wrap;
-}
-
-.save-state {
-  display: inline-flex;
-  align-items: center;
-  gap: 6px;
-  padding: 0 !important;
-  border: 0 !important;
-  border-radius: 0 !important;
-  background: transparent !important;
-  box-shadow: none !important;
-  font-size: 12px;
-  font-weight: 500;
-  color: #64748b !important;
-}
-
-.save-state.is-pending {
-  color: #d97706 !important;
-}
-
-.save-state.is-success {
-  color: #16a34a !important;
-}
-
-.save-state.is-error {
-  color: #dc2626 !important;
 }
 
 .empty-state {
@@ -387,8 +303,13 @@ async function handleSave() {
 }
 
 @keyframes pulse {
-  0%, 100% { opacity: 1; }
-  50% { opacity: .4; }
+  0%,
+  100% {
+    opacity: 1;
+  }
+  50% {
+    opacity: 0.4;
+  }
 }
 
 .unavailable-notice {
@@ -399,16 +320,22 @@ async function handleSave() {
   font-size: 12px;
   line-height: 1.4;
 }
+
 @media (max-width: 1024px) {
-  .b2b-matrix-modal-header { padding: 10px 16px; }
-  .matrix-footer { padding: 12px 16px; }
+  .b2b-matrix-modal-header {
+    padding: 10px 16px;
+  }
 }
+
 @media (max-width: 600px) {
-  .b2b-matrix-modal-dialog { border: 0; }
-  .modal-heading > span { display: none; }
-  .b2b-matrix-modal-header { padding: 8px 10px; }
-  .matrix-footer { gap: 10px; padding: 10px; }
-  .summary-numbers strong { font-size: 19px; }
-  .previous-total { display: none; }
+  .b2b-matrix-modal-dialog {
+    border: 0;
+  }
+  .modal-heading > span {
+    display: none;
+  }
+  .b2b-matrix-modal-header {
+    padding: 8px 10px;
+  }
 }
 </style>
