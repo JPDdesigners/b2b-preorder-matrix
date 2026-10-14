@@ -300,11 +300,11 @@ onUnmounted(() => {
 
 .product-columns-heading > span:first-child {
   text-align: left;
-  padding-left: 40px;
+  padding-left: 38px;
 }
 
 .product-columns-heading > span:last-child {
-  text-align: right;
+  text-align: center;
 }
 
 .product-window {

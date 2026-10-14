@@ -133,12 +133,16 @@ async function handleSave() {
   background: #ffffff;
   width: 100%;
   max-width: calc(80rem - 24px);
-  flex: 1;
+  flex: 0 1 auto;
+  max-height: 100%;
   min-height: 0;
   display: flex;
   flex-direction: column;
   overflow: hidden;
   border-inline: 1px solid #e2e8f0;
+  border-bottom: 1px solid #e2e8f0;
+  border-radius: 0 0 var(--b2b-radius-lg, 14px) var(--b2b-radius-lg, 14px);
+  box-shadow: 0 12px 32px -8px rgba(15, 23, 42, 0.08);
 }
 
 .modal-heading {
@@ -215,7 +219,7 @@ async function handleSave() {
   display: flex;
   min-height: 0;
   overflow: hidden;
-  flex: 1;
+  flex: 0 1 auto;
   padding: 0;
   background: #ffffff;
 }
@@ -223,7 +227,7 @@ async function handleSave() {
 .b2b-matrix-app {
   display: flex;
   flex-direction: column;
-  flex: 1;
+  flex: 0 1 auto;
   min-height: 0;
   width: 100%;
   color: #0f172a;
@@ -237,10 +241,11 @@ async function handleSave() {
   box-sizing: border-box;
 }
 
-/* One vertical scroller: the editor body. The top bar (Back/X) and the footer stay fixed around it,
-   and the docked size header locks at its top edge while colours scroll underneath. */
+/* One vertical scroller: the editor body. When there are few colours, the footer sits
+   directly below the last colour row; when colours exceed the screen, the footer stays
+   at the bottom edge and the docked size header locks at the top edge while scrolling. */
 .b2b-matrix-app :deep(.matrix-table-outer) {
-  flex: 1;
+  flex: 0 1 auto;
   min-height: 0;
   overflow-y: auto;
   overscroll-behavior-y: contain;

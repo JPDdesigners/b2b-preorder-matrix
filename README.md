@@ -1,13 +1,13 @@
-# B2B Order List Matrix 3.7.0
+# B2B Order List Matrix 3.7.1
 
-## Modern SaaS My List redesign, Gesture Help modal, Custom Accent contrast, Admin notices & CI — 3.7.0
+## Modern SaaS My List redesign, Gesture Help modal, Custom Accent contrast, Admin notices & CI — 3.7.1
 
 - **My List SaaS Redesign & Component Architecture:** `OrderListPage.vue` is now modularized into focused components (`CatalogSearch.vue`, `ListFilters.vue`, `ProductListViewport.vue`, `OrderSummarySidebar.vue`, and `SubmissionProgress.vue`) with a clean, compact SaaS interface:
-  - Unified top workspace bar combining the page title, live inline KPI badges (`Κωδικοί`, `Τεμάχια`, `Σύνολο`), and the Quick Add catalog search bar.
-  - Streamlined 2-row filter toolbar with category tabs, subcategory dropdown, in-list search, inline filtered subtotal pill, and the 2-step typed `delete` Empty List action.
+  - Unified top workspace bar with a uniform card border (`1px solid #e2e8f0`), combining the page title (`Η λίστα μου`), the season pill (`ΠΡΟΠΑΡΑΓΓΕΛΙΕΣ · CURRENT SEASON`) underneath, and the Quick Add catalog search bar (without duplicating the bottom summary KPIs).
+  - Streamlined 2-row filter toolbar with category tabs, subcategory dropdown, in-list search, inline filtered subtotal pill (`40px` aligned height), and the 2-step typed `delete` Empty List action.
   - Compact virtualized product cards (`96px` desktop row height) with crisp thumbnail badges, brand/SKU pills, tabular quantity and value columns, and action buttons.
-  - Compact sticky summary sidebar with customer details, autosaved plain-text order notes, and dark total panel.
-- **Shared Matrix Footer (`MatrixFooter.vue`):** Unified footer component shared by both the single-product matrix (`App.vue`) and the My List modal editor (`MatrixModal.vue`).
+  - Compact sticky summary sidebar with vertically stacked customer details (`Επωνυμία`, `ΑΦΜ`, `Email` in lowercase), autosaved plain-text order notes, and dark total panel.
+- **Content-hugging Matrix Modal Footer (`MatrixModal.vue` & `MatrixFooter.vue`):** Unified footer component shared by both the single-product matrix (`App.vue`) and the My List modal editor (`MatrixModal.vue`). In My List, when a product has only a few colors that do not fill the screen, the footer sits directly below the last color row without an empty gap; when colors exceed the viewport height, the footer locks to the bottom edge while the color list scrolls.
 - **Gesture & Shortcut Help Modal (`GestureHelpModal.vue`):** Added an `ⓘ Οδηγίες` button in the matrix header that opens a clean modal explaining touch (`Tap = +1`, `Hold 0.5s = πληκτρολόγηση`), desktop mouse wheel (`±1`), and size-curve (`− / +`) controls.
 - **WCAG Contrast Protection for Custom HEX Accents:** `theme.js` computes relative luminance for custom HEX colors and emits contrast-safe `--b2b-on-primary`, `--b2b-focus-ring`, and `--b2b-primary-ink` tokens so pale or white custom accents automatically use dark readable text and visible focus rings.
 - **Season Reset Admin Notices & External Admin Script:** `B2B_Matrix_Settings` displays native WordPress `.notice-success` and `.notice-error` banners after season reset actions, and moves custom color picker logic from inline HTML attributes to `assets/admin-settings.js` with live contrast feedback.
@@ -89,7 +89,7 @@ cd ..
 python tools/build_release.py
 ```
 
-The uploadable ZIP is `releases/b2b-preorder-matrix-3.7.0.zip`, with a single `b2b-preorder-matrix/` root. The packaging script checks every ZIP entry against its source bytes and excludes tests, dependencies and local files. Use `--force` to replace a previously built ZIP. Rebuild Vue after editing `.vue` or JavaScript source; packaging by itself uses the current committed `dist` assets. The automatic GitHub source archive contains the development repository; use the named plugin ZIP attached to the release for WordPress upload.
+The uploadable ZIP is `releases/b2b-preorder-matrix-3.7.1.zip`, with a single `b2b-preorder-matrix/` root. The packaging script checks every ZIP entry against its source bytes and excludes tests, dependencies and local files. Use `--force` to replace a previously built ZIP. Rebuild Vue after editing `.vue` or JavaScript source; packaging by itself uses the current committed `dist` assets. The automatic GitHub source archive contains the development repository; use the named plugin ZIP attached to the release for WordPress upload.
 
 Own plugin code is licensed under GPL-2.0-or-later; see [LICENSE](LICENSE). Bundled Vue and Pinia retain their MIT licenses, included in `licenses/`.
 

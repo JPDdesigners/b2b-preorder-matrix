@@ -6,22 +6,10 @@
           <UiIcon name="clipboard-check" />
         </div>
         <div class="list-hero-copy">
-          <div class="list-hero-title-row">
-            <h1>Η λίστα μου</h1>
-            <span class="list-eyebrow">
-              ΠΡΟΠΑΡΑΓΓΕΛΙΕΣ <template v-if="payload.season">· {{ payload.season }}</template>
-            </span>
-          </div>
-          <p v-if="loaded && !loginRequired && items.length" class="list-hero-kpis">
-            <span><strong>{{ items.length }}</strong> κωδικοί</span>
-            <span class="kpi-sep">·</span>
-            <span><strong>{{ payload.totalQty || 0 }}</strong> τεμ.</span>
-            <span class="kpi-sep">·</span>
-            <span class="kpi-val">{{ hasUnpriced ? '—' : money(payload.totalVal || 0) }}</span>
-          </p>
-          <p v-else>
-            Επιλέξτε κωδικούς και ελέγξτε τις ποσότητες πριν την υποβολή.
-          </p>
+          <h1>Η λίστα μου</h1>
+          <span class="list-eyebrow">
+            ΠΡΟΠΑΡΑΓΓΕΛΙΕΣ <template v-if="payload.season">· {{ payload.season }}</template>
+          </span>
         </div>
       </header>
 
@@ -769,9 +757,8 @@ onUnmounted(() => {
   overflow: visible !important;
   padding: 14px 18px;
   margin-bottom: 18px;
-  border-color: #e2e8f0 !important;
-  border-top: 3px solid var(--b2b-primary) !important;
-  box-shadow: 0 1px 3px rgba(15, 23, 42, 0.04), 0 4px 14px -4px rgba(15, 23, 42, 0.05);
+  border: 1px solid #e2e8f0 !important;
+  box-shadow: 0 1px 3px rgba(15, 23, 42, 0.04), 0 4px 16px -4px rgba(15, 23, 42, 0.05);
 }
 
 .list-hero {
@@ -800,14 +787,11 @@ onUnmounted(() => {
 }
 
 .list-hero-copy {
-  min-width: 0;
-}
-
-.list-hero-title-row {
   display: flex;
-  align-items: center;
-  flex-wrap: wrap;
-  gap: 8px;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 5px;
+  min-width: 0;
 }
 
 .list-hero h1 {
@@ -822,7 +806,7 @@ onUnmounted(() => {
 .list-eyebrow {
   display: inline-flex;
   align-items: center;
-  padding: 2px 7px;
+  padding: 2px 8px;
   border-radius: var(--b2b-radius-pill, 999px);
   background: var(--b2b-primary-soft);
   border: 1px solid var(--b2b-primary-border);
@@ -830,35 +814,7 @@ onUnmounted(() => {
   font-size: 10px;
   font-weight: 700;
   letter-spacing: 0.04em;
-}
-
-.list-hero-copy > p {
-  margin: 3px 0 0 !important;
-  color: #64748b;
-  font-size: 12px;
   line-height: 1.4;
-}
-
-.list-hero-kpis {
-  display: flex;
-  align-items: center;
-  flex-wrap: wrap;
-  gap: 6px;
-  font-variant-numeric: tabular-nums;
-}
-
-.list-hero-kpis strong {
-  color: #0f172a;
-  font-weight: 700;
-}
-
-.kpi-sep {
-  color: #cbd5e1;
-}
-
-.kpi-val {
-  color: var(--b2b-primary-ink, var(--b2b-primary));
-  font-weight: 700;
 }
 
 .quick-add-loading {

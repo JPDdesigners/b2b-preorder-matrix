@@ -295,11 +295,13 @@ function selectRoot(nextRootId) {
 }
 
 .filter-field {
-  min-height: 38px !important;
+  height: 40px !important;
+  min-height: 40px !important;
   padding: 7px 12px !important;
   font-size: 12.5px !important;
   border-color: #cbd5e1 !important;
   background: #ffffff !important;
+  box-sizing: border-box;
 }
 
 .list-search-field > :deep(svg) {
@@ -340,11 +342,13 @@ function selectRoot(nextRootId) {
   align-items: center;
   justify-content: space-between;
   gap: 14px;
-  min-height: 38px;
-  padding: 6px 12px;
+  height: 40px;
+  min-height: 40px;
+  padding: 4px 12px;
   border: 1px solid var(--b2b-primary-border);
   border-radius: var(--b2b-radius, 8px);
   background: var(--b2b-primary-soft);
+  box-sizing: border-box;
 }
 
 .subtotal-meta {

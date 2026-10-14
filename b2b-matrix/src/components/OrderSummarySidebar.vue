@@ -10,25 +10,27 @@
         </div>
 
         <dl class="customer-details">
-          <div class="customer-detail-full">
+          <div class="customer-detail-item">
             <dt>Επωνυμία</dt>
             <dd>
               <span v-if="loading" class="inline-skeleton wide"></span>
               <strong v-else>{{ customerInfo?.company || '—' }}</strong>
             </dd>
           </div>
-          <div>
+          <div class="customer-detail-item">
             <dt>ΑΦΜ</dt>
             <dd>
               <span v-if="loading" class="inline-skeleton"></span>
               <strong v-else>{{ customerInfo?.afm || '—' }}</strong>
             </dd>
           </div>
-          <div>
-            <dt>Email τιμολόγησης</dt>
+          <div class="customer-detail-item">
+            <dt>Email</dt>
             <dd>
               <span v-if="loading" class="inline-skeleton wide"></span>
-              <strong v-else class="customer-email">{{ customerInfo?.email || '—' }}</strong>
+              <strong v-else class="customer-email">
+                {{ customerInfo?.email ? String(customerInfo.email).toLowerCase() : '—' }}
+              </strong>
             </dd>
           </div>
         </dl>
@@ -256,27 +258,26 @@ defineEmits(['update:note', 'saveNote', 'resolveNote', 'submit']);
 }
 
 .customer-details {
-  display: grid;
-  grid-template-columns: 1fr 1fr;
-  gap: 10px 12px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
   margin: 0 !important;
-  padding: 10px 12px;
+  padding: 11px 12px;
   border: 1px solid #f1f5f9;
   border-radius: var(--b2b-radius, 8px);
   background: #f8fafc;
 }
 
-.customer-detail-full {
-  grid-column: 1 / -1;
-  padding-bottom: 8px;
-  border-bottom: 1px solid #e2e8f0;
-}
-
-.customer-details > div {
+.customer-detail-item {
   display: flex;
   flex-direction: column;
   gap: 2px;
   min-width: 0;
+}
+
+.customer-detail-item + .customer-detail-item {
+  padding-top: 8px;
+  border-top: 1px solid #e2e8f0;
 }
 
 .customer-details dt {
@@ -301,9 +302,12 @@ defineEmits(['update:note', 'saveNote', 'resolveNote', 'submit']);
 
 .customer-email {
   font-weight: 500 !important;
+  text-transform: lowercase;
 }
 
 .note-textarea {
+  width: 100%;
+  box-sizing: border-box;
   min-height: 76px !important;
   padding: 8px 10px !important;
   font-size: 12.5px !important;
@@ -311,6 +315,7 @@ defineEmits(['update:note', 'saveNote', 'resolveNote', 'submit']);
   margin-bottom: 0 !important;
   background: #f8fafc !important;
   border-color: #cbd5e1 !important;
+  box-shadow: none !important;
 }
 
 .note-textarea:focus {
