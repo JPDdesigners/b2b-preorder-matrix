@@ -2,7 +2,7 @@
 /**
  * Plugin Name: B2B Pre-Order Matrix API
  * Description: Private pre-order quantities and a cache-safe Vue matrix for WooCommerce.
- * Version: 3.4.0
+ * Version: 3.6.1
  * Requires at least: 6.5
  * Requires PHP: 7.4
  * Requires Plugins: woocommerce
@@ -10,7 +10,7 @@
  * License URI: https://www.gnu.org/licenses/old-licenses/gpl-2.0.html
  */
 if ( ! defined( 'ABSPATH' ) ) { exit; }
-if ( ! defined( 'B2B_MATRIX_VERSION' ) ) { define( 'B2B_MATRIX_VERSION', '3.4.0' ); }
+if ( ! defined( 'B2B_MATRIX_VERSION' ) ) { define( 'B2B_MATRIX_VERSION', '3.6.1' ); }
 if ( ! defined( 'B2B_MATRIX_PLUGIN_FILE' ) ) { define( 'B2B_MATRIX_PLUGIN_FILE', __FILE__ ); }
 add_action( 'before_woocommerce_init', static function() {
     if ( class_exists( '\\Automattic\\WooCommerce\\Utilities\\FeaturesUtil' ) ) {
@@ -153,13 +153,19 @@ class B2B_Matrix_API {
                 $prices[ $cell['id'] ] = is_numeric( $price ) && (float) $price >= 0 ? (float) $price : null;
             }
         }
+        try {
+            $existing = $user_id ? self::get_user_product_quantities( $user_id, (int) $product_id ) : [];
+        } catch ( Throwable $e ) {
+            // Lock timeout during a running submission/season reset or a DB read error: never a PHP fatal.
+            return new WP_Error( 'list_busy', 'Η λίστα σας ενημερώνεται αυτή τη στιγμή. Δοκιμάστε ξανά σε λίγα δευτερόλεπτα.', [ 'status' => 503 ] );
+        }
         $payload = [
             'nonce' => wp_create_nonce( 'wp_rest' ), 'user_id' => (int) $user_id,
             'appearance' => B2B_Matrix_Settings::get(), 'login_url' => wc_get_page_permalink( 'myaccount' ),
             'structure_version' => $structure['structure_version'], 'prices' => (object) $prices,
             'currency' => get_woocommerce_currency(), 'price_decimals' => wc_get_price_decimals(),
             'max_qty' => self::MAX_QTY,
-            'existing_quantities' => (object) ( $user_id ? self::get_user_product_quantities( $user_id, (int) $product_id ) : [] ),
+            'existing_quantities' => (object) $existing,
         ];
         if ( $known_version !== $structure['structure_version'] ) {
             // Full response also supports old cached frontend assets during an upgrade.
@@ -205,7 +211,8 @@ class B2B_Matrix_API {
         foreach ( $payload['matrix'] as $row ) { foreach ( $row as $cell ) { $allowed[ $cell['id'] ] = true; } }
         $editable = B2B_Matrix_DB::ensure_editable( $user_id );
         if ( is_wp_error( $editable ) ) { return $editable; }
-        $current = self::get_user_product_quantities( $user_id, $product_id );
+        try { $current = self::get_user_product_quantities( $user_id, $product_id ); }
+        catch ( Throwable $e ) { return self::error( 'list_busy', 'Η λίστα σας ενημερώνεται αυτή τη στιγμή. Δοκιμάστε ξανά σε λίγα δευτερόλεπτα.', 503 ); }
         $updated = $current;
         $seen = [];
         $changed = [];
@@ -252,7 +259,8 @@ class B2B_Matrix_API {
 
     public static function rest_get_all_preorder_items( $request ) {
         $user_id = get_current_user_id();
-        $items = B2B_Matrix_DB::get_user_all_items( $user_id );
+        try { $items = B2B_Matrix_DB::get_user_all_items( $user_id ); }
+        catch ( Throwable $e ) { return new WP_Error( 'list_busy', 'Η λίστα σας ενημερώνεται αυτή τη στιγμή. Δοκιμάστε ξανά σε λίγα δευτερόλεπτα.', [ 'status' => 503 ] ); }
         return rest_ensure_response( [
             'success' => true,
             'data'    => [

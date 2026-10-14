@@ -5,8 +5,13 @@
 <div class="b2b-vue-matrix-container" data-product-id="101" data-session-endpoint="/fixture/admin-ajax.php" data-api-endpoint="/fixture/matrix"></div></main>
 <script type="module">
 import { MOCK_DATA } from '../src/stores/mockData.js';
+import { manyColors } from './fixtureColors.js';
 const guest = new URL(location.href).searchParams.has('guest');
-const data = structuredClone(MOCK_DATA);
+const fixtureFlags = new URL(location.href).searchParams;
+// ?themeheader: a fixed 80px theme header (like Flatsome sticky); ?filler: page content below the matrix.
+if (fixtureFlags.has('themeheader')) { const bar = document.createElement('header'); bar.className = 'fixture-theme-header'; bar.textContent = 'Theme sticky header'; bar.style.cssText = 'position:fixed;inset:0 0 auto;height:80px;z-index:999;background:#172033;color:#fff;padding:28px 24px;box-sizing:border-box'; document.body.prepend(bar); document.body.style.paddingTop = '80px'; }
+if (fixtureFlags.has('filler')) { const more = document.createElement('section'); more.className = 'fixture-filler'; more.style.cssText = 'height:1200px;margin-top:24px;background:repeating-linear-gradient(#fff 0 40px,#f4f4f5 40px 80px)'; document.querySelector('main').append(more); }
+const data = new URL(location.href).searchParams.has('manycolors') ? manyColors(MOCK_DATA) : structuredClone(MOCK_DATA);
 const prices = {};
 for (const row of Object.values(data.matrix)) for (const cell of Object.values(row)) { prices[cell.id] = cell.price; delete cell.price; }
 const structure = { product_id: 101, structure_version: 'fixture-v1', product_name: data.product_name, parent_sku: data.parent_sku, colors: data.colors, sizes: data.sizes, matrix: data.matrix };

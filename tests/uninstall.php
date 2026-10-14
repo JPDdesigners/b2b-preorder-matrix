@@ -19,6 +19,7 @@ require __DIR__ . '/../uninstall.php';
 if ( $wpdb->queries !== [
     'DROP TABLE IF EXISTS `wp_b2b_preorder_items`',
     'DROP TABLE IF EXISTS `wp_b2b_preorder_batches`',
+    'DROP TABLE IF EXISTS `wp_b2b_preorder_drafts`',
 ] ) { throw new Exception( 'Uninstall targeted unexpected tables.' ); }
 
 if ( $deleted_options !== [
@@ -27,6 +28,7 @@ if ( $deleted_options !== [
     'b2b_matrix_catalog_generation',
     'b2b_matrix_legacy_retired',
     'b2b_matrix_last_season_reset',
+    'b2b_matrix_draft_epoch',
 ] ) { throw new Exception( 'Uninstall did not remove only plugin settings.' ); }
 
 if ( $deleted_metadata !== [ [ 'user', 0, '_b2b_matrix_removed_items_' . md5( 'wp_' ), '', true ] ] ) { throw new Exception( 'Uninstall must remove only its cancellation notice user metadata, preserving order history.' ); }

@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { changeQuantityWithWheel } from '../src/cellWheel.js';
+import { changeQuantityWithWheel, createWheelIntent } from '../src/cellWheel.js';
 
 function fixture(quantity = 2) {
   const store = { cart: { 10: quantity, 20: 7 }, maxQty: 9, setQuantity(id, value) { this.cart[id] = value; } };
@@ -51,4 +51,25 @@ test('an empty quantity starts from zero', () => {
   const f = fixture('');
   f.change(f.event());
   assert.equal(f.store.cart[10], 1);
+});
+
+test('a scroll gesture that slides over a cell keeps scrolling and never edits it', () => {
+  const f = fixture(), e = f.event();
+  assert.equal(f.change(e, { scrolling: true }), false);
+  assert.equal(e.prevented, false);
+  assert.equal(f.store.cart[10], 2);
+});
+
+test('scroll intent latches while wheel events keep coming and releases after idle', () => {
+  let t = 0;
+  const intent = createWheelIntent({ idleMs: 450, now: () => t });
+  assert.equal(intent.active(), false);
+  intent.noteScroll(); t = 300;
+  assert.equal(intent.active(), true);
+  intent.noteScroll(); t = 700; // continuous inertia extends the latch
+  assert.equal(intent.active(), true);
+  t = 1200;
+  assert.equal(intent.active(), false);
+  intent.noteScroll(); intent.reset();
+  assert.equal(intent.active(), false);
 });

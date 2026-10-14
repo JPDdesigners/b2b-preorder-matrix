@@ -7,11 +7,11 @@
     </div>
     <template v-if="store.data">
       <div v-if="store.ready && store.unavailableCount" class="unavailable-notice" role="status">{{ store.unavailableCount }} αποθηκευμένες παραλλαγές δεν εμφανίζονται πλέον στον πίνακα. Διατηρούνται στη λίστα σας και δεν περιλαμβάνονται στα παρακάτω σύνολα.</div>
-      <MatrixTable :store="store" :pending="!store.ready" />
+      <MatrixTable :store="store" :pending="!store.ready" page-sticky />
       <div v-if="store.ready && !store.cells.length" class="empty-state">Δεν υπάρχουν συνδυασμοί χρώματος και μεγέθους.</div>
-      <footer class="matrix-footer">
+      <footer ref="footer" class="matrix-footer" :class="{ 'is-stuck': footerStuck }">
         <div class="order-summary">
-          <span class="summary-label">Σύνολο επιλογής · ενδεικτική αξία</span>
+          <span class="summary-label">Σύνολο επιλογής · συνολική αξία</span>
           <div v-if="store.ready" class="summary-numbers"><strong>{{ store.totalQty }} <small>τεμ.</small></strong><span class="summary-divider"></span><strong>{{ store.totalPrice }}</strong></div>
           <div v-else class="summary-numbers" aria-label="Αναμονή ποσοτήτων και τιμών"><span class="summary-skeleton"></span><span class="summary-divider"></span><span class="summary-skeleton"></span></div>
           <p v-if="store.ready && (store.hasExistingItems || store.isDirty)" class="previous-total">
@@ -47,7 +47,7 @@
 </template>
 
 <script setup>
-import { computed, ref, provide, onMounted, onUnmounted } from 'vue';
+import { computed, ref, provide, onMounted, onUpdated, onUnmounted } from 'vue';
 import { appearanceStyle, SYSTEM_FONT, THEME_KEY } from './theme.js';
 import UiIcon from './components/UiIcon.vue';
 import B2BButton from './components/ui/B2BButton.vue';
@@ -70,20 +70,42 @@ function restorePage(event) {
   store.existingQuantities = {};
   window.location.reload();
 }
+// The footer sticks to the bottom of the window while the matrix is on screen; it is "docked"
+// whenever it sits above its natural place at the end of the card.
+const footer = ref(null), footerStuck = ref(false);
+let footerFrame = 0;
+function measureFooter() {
+  footerFrame = 0;
+  const el = footer.value, card = el?.parentElement;
+  if (!el || !card) { footerStuck.value = false; return; }
+  const naturalBottom = card.getBoundingClientRect().bottom - (parseFloat(getComputedStyle(card).borderBottomWidth) || 0);
+  footerStuck.value = naturalBottom - el.getBoundingClientRect().bottom > 1;
+}
+function scheduleFooter() { if (!footerFrame) footerFrame = requestAnimationFrame(measureFooter); }
 onMounted(() => {
   inheritedFont.value = getComputedStyle(props.container).fontFamily || SYSTEM_FONT;
   store.fetchMatrix();
   window.addEventListener('beforeunload', beforeLeave);
   window.addEventListener('pageshow', restorePage);
+  window.addEventListener('scroll', scheduleFooter, { passive: true });
+  window.addEventListener('resize', scheduleFooter, { passive: true });
 });
+onUpdated(scheduleFooter);
 onUnmounted(() => {
   window.removeEventListener('beforeunload', beforeLeave);
   window.removeEventListener('pageshow', restorePage);
+  window.removeEventListener('scroll', scheduleFooter);
+  window.removeEventListener('resize', scheduleFooter);
+  cancelAnimationFrame(footerFrame);
 });
 </script>
 
 <style scoped>
 .b2b-matrix-app { color: #0f172a; background: #fff; border: 1px solid #d4d4d8; border-radius: var(--b2b-radius-lg, 12px); margin: 24px 0; overflow: hidden; font-family: var(--b2b-font, inherit); box-shadow: 0 1px 3px 0 rgba(0, 0, 0, 0.04), 0 8px 24px -4px rgba(0, 0, 0, 0.07); font-variant-numeric: tabular-nums; box-sizing: border-box; }
+/* clip (not hidden) keeps the rounded card without creating a scroll container, so the size header
+   and the footer can stick to the window while the customer scrolls the page. */
+.b2b-matrix-app { overflow: clip; }
+@supports not (overflow: clip) { .b2b-matrix-app { overflow: visible; } }
 .b2b-matrix-app :deep(table) { border: 0 !important; margin: 0 !important; background: transparent !important; }
 .b2b-matrix-app :deep(*) { box-sizing: border-box; }
 .b2b-matrix-app :deep(button),
@@ -93,6 +115,10 @@ onUnmounted(() => {
   font-family: inherit;
 }
 .matrix-footer { background: #f8fafc; padding: 22px 24px; display: flex; align-items: flex-end; justify-content: space-between; flex-wrap: wrap; gap: 20px 24px; border-top: 1px solid #e2e8f0; }
+/* Totals and Save stay at the bottom of the window while the matrix is on screen. */
+.matrix-footer { position: sticky; bottom: 0; z-index: 7; transition: box-shadow .2s ease; }
+.matrix-footer.is-stuck { box-shadow: 0 -10px 18px -10px rgba(15, 23, 42, .22); }
+@media (max-height: 500px) { .matrix-footer { position: static; } }
 .order-summary { display: flex; flex-direction: column; }
 .summary-label { color: #64748b; font-size: 11px; font-weight: 600; text-transform: uppercase; letter-spacing: .05em; }
 .summary-numbers { display: flex; gap: 18px; align-items: center; margin-top: 6px; }

@@ -29,30 +29,18 @@
       </div>
     </div>
 
-    <div ref="tableContainer" class="matrix-scroll" tabindex="0" role="region" aria-label="Ποσότητες ανά χρώμα και μέγεθος, οριζόντια κύλιση" @scroll="handleScroll">
+    <div ref="grid" class="matrix-grid" :style="{ '--b2b-sticky-top': stickyTop + 'px' }">
+      <!-- Docked copy of the size header: sticks under the site/dialog header while colours scroll,
+           and leaves together with the last colour row. The in-table header keeps semantics. -->
+      <div class="matrix-head-track" aria-hidden="true">
+        <div ref="headScroller" class="matrix-head" :class="{ 'is-stuck': headStuck }" tabindex="-1" @scroll="syncFromHead">
+          <table class="matrix-table matrix-table-head" :class="{ compact }"><thead><MatrixHeadRow :store="store" :readonly="readonly" :show-row-actions="showRowActions" :scrolled="canScrollLeft" /></thead></table>
+        </div>
+      </div>
+      <div ref="tableContainer" class="matrix-scroll" tabindex="0" role="region" aria-label="Ποσότητες ανά χρώμα και μέγεθος" @scroll="handleScroll" @focusin="revealFocusedCell">
       <table class="matrix-table" :class="{ compact }">
         <caption class="sr-only">Λίστα παραγγελίας ανά χρώμα και μέγεθος. Οι τιμές είναι ανά τεμάχιο.</caption>
-        <thead><tr>
-          <th scope="col" class="sticky-col color-heading" :class="{ scrolled: canScrollLeft }">Χρώμα <span>{{ store.data.colors.length }}</span></th>
-          <th v-if="!readonly && showRowActions" scope="col" class="curve-heading">Καμπύλη</th>
-          <th
-            v-for="size in store.data.sizes"
-            :key="size"
-            scope="col"
-            :class="{
-              'selected-size': store.isCustomCurveActive && store.activeCurveSizes.includes(size),
-              'excluded-size': store.isCustomCurveActive && !store.activeCurveSizes.includes(size)
-            }"
-          >
-            {{ store.sizeLabel(size) }}
-            <span
-              v-if="store.isCustomCurveActive && store.activeCurveSizes.includes(size)"
-              class="size-dot"
-              :title="store.curveMultiplier(size) > 1 ? `Σειρά: x${store.curveMultiplier(size)}` : 'Στην επιλεγμένη σειρά'"
-              aria-label="Στην επιλεγμένη σειρά"
-            ></span>
-          </th>
-        </tr></thead>
+        <thead><MatrixHeadRow :store="store" :readonly="readonly" :show-row-actions="showRowActions" :scrolled="canScrollLeft" /></thead>
         <tbody>
           <tr v-for="color in store.data.colors" :key="color">
             <th scope="row" class="sticky-col color-cell" :class="{ scrolled: canScrollLeft }">
@@ -103,15 +91,18 @@
         </tbody>
       </table>
     </div>
+    </div>
   </div>
 </template>
 
 <script setup>
 import { computed, ref, watch, onMounted, onUnmounted } from 'vue';
+import MatrixHeadRow from './MatrixHeadRow.vue';
+import { topObstruction, stickyOffsetOverride } from '../stickyOffset.js';
 import CurveModal from './CurveModal.vue';
 import UiIcon from './UiIcon.vue';
 import { createCellTouch } from '../cellTouch.js';
-import { changeQuantityWithWheel } from '../cellWheel.js';
+import { changeQuantityWithWheel, createWheelIntent } from '../cellWheel.js';
 import { displayColorName } from '../colorNames.js';
 
 const props = defineProps({
@@ -120,6 +111,8 @@ const props = defineProps({
   pending: Boolean,
   compact: Boolean,
   showRowActions: { type: Boolean, default: true },
+  // Product page: the window scrolls, so dock the size header under the theme's sticky header.
+  pageSticky: Boolean,
 });
 
 const showCurveModal = ref(false);
@@ -127,6 +120,7 @@ const showAllPrices = ref(false);
 const tableContainer = ref(null);
 const canScrollLeft = ref(false);
 const canScrollRight = ref(false);
+const grid = ref(null), headScroller = ref(null), headStuck = ref(false), stickyTop = ref(0);
 const curveToast = ref(false);
 const defaultCurveLabel = computed(() => props.store.data?.sizes?.map(() => '1').join(' · ') || '1');
 let curveToastTimer;
@@ -175,10 +169,16 @@ function editQuantity(event, id) {
   event.target.value = props.store.cart[id];
 }
 
+// A scroll that started elsewhere (page, colour column, dialog margins) keeps scrolling over cells.
+const wheelIntent = createWheelIntent();
+function trackWheel(event) { if (!event.target?.closest?.('.cell-stack')) wheelIntent.noteScroll(); }
 function handleWheel(event, id) {
+  const scrolling = wheelIntent.active();
+  if (scrolling) wheelIntent.noteScroll();
   changeQuantityWithWheel(event, id, props.store, {
     disabled: props.readonly || props.pending || props.store.loading || props.store.isSubmitting,
     desktop: window.matchMedia('(hover: hover) and (pointer: fine)').matches,
+    scrolling,
   });
 }
 
@@ -204,13 +204,70 @@ function handleScroll() {
   if (!el) return;
   canScrollLeft.value = el.scrollLeft > 2;
   canScrollRight.value = el.scrollLeft + el.clientWidth < el.scrollWidth - 2;
+  if (headScroller.value && headScroller.value.scrollLeft !== el.scrollLeft) headScroller.value.scrollLeft = el.scrollLeft;
+}
+// Dragging the docked header sideways (touch) moves the table too.
+function syncFromHead() {
+  const head = headScroller.value, body = tableContainer.value;
+  if (head && body && body.scrollLeft !== head.scrollLeft) body.scrollLeft = head.scrollLeft;
 }
 
 function scrollTable(left) { tableContainer.value?.scrollBy({ left, behavior: 'smooth' }); }
 
+// Docking: the copy is sticky inside the grid, so it locks under the top bar exactly when the
+// table header reaches it and is released with the last colour row. One scroller per screen:
+// the window on the product page, the editor body in My List — never a nested vertical box.
+let frame = 0;
+function scheduleLayout() { if (!frame) frame = requestAnimationFrame(updateLayout); }
+function updateLayout() {
+  frame = 0;
+  const g = grid.value, head = headScroller.value;
+  if (!g || !head) return;
+  const gridTop = g.getBoundingClientRect().top;
+  if (props.pageSticky && g.getBoundingClientRect().bottom > 0 && gridTop < window.innerHeight) {
+    const offset = stickyOffsetOverride(g) ?? topObstruction({ root: g.closest('.b2b-matrix-app') || g });
+    if (offset !== stickyTop.value) stickyTop.value = offset;
+  }
+  headStuck.value = head.getBoundingClientRect().top - gridTop > 0.5;
+}
+
+function verticalScroller(el) {
+  for (let node = el?.parentElement; node && node !== document.body; node = node.parentElement) {
+    const overflow = getComputedStyle(node).overflowY;
+    if ((overflow === 'auto' || overflow === 'scroll') && node.scrollHeight > node.clientHeight + 1) return node;
+  }
+  return window;
+}
+// Keyboard/hold-to-edit focus: keep the cell clear of the docked header and the sticky footer.
+function revealFocusedCell(event) {
+  if (!(event.target instanceof HTMLInputElement)) return;
+  requestAnimationFrame(() => {
+    const head = headScroller.value, cellBox = event.target.closest('td') || event.target;
+    if (!head || !cellBox.isConnected) return;
+    const rect = cellBox.getBoundingClientRect(), top = head.getBoundingClientRect().bottom + 4;
+    const footer = event.target.closest('.b2b-matrix-app')?.querySelector('.matrix-footer')?.getBoundingClientRect();
+    const viewportBottom = window.visualViewport?.height ?? window.innerHeight;
+    const bottom = (footer && footer.top > top && footer.top < viewportBottom ? footer.top : viewportBottom) - 4;
+    const delta = rect.top < top ? rect.top - top : rect.bottom > bottom ? rect.bottom - bottom : 0;
+    if (delta) verticalScroller(tableContainer.value).scrollBy({ top: delta, behavior: 'smooth' });
+  });
+}
+
 let observer;
-onMounted(() => { observer = new ResizeObserver(handleScroll); observer.observe(tableContainer.value); handleScroll(); });
-onUnmounted(() => { observer?.disconnect(); touch.cancel(); clearTimeout(curveToastTimer); });
+onMounted(() => {
+  observer = new ResizeObserver(() => { handleScroll(); scheduleLayout(); });
+  observer.observe(tableContainer.value); observer.observe(grid.value);
+  window.addEventListener('scroll', scheduleLayout, { capture: true, passive: true });
+  window.addEventListener('resize', scheduleLayout, { passive: true });
+  window.addEventListener('wheel', trackWheel, { capture: true, passive: true });
+  handleScroll(); updateLayout();
+});
+onUnmounted(() => {
+  observer?.disconnect(); touch.cancel(); clearTimeout(curveToastTimer); cancelAnimationFrame(frame);
+  window.removeEventListener('scroll', scheduleLayout, { capture: true });
+  window.removeEventListener('resize', scheduleLayout);
+  window.removeEventListener('wheel', trackWheel, { capture: true });
+});
 </script>
 
 <style scoped>
@@ -240,28 +297,40 @@ onUnmounted(() => { observer?.disconnect(); touch.cancel(); clearTimeout(curveTo
 .price-toggle input { appearance: auto !important; accent-color: var(--b2b-primary); width: 16px !important; height: 16px !important; min-width: 16px !important; min-height: 16px !important; margin: 0 !important; padding: 0 !important; flex: 0 0 16px; cursor: pointer; vertical-align: middle; }
 .price-toggle span { display: inline-block; line-height: 1.2; }
 
-.matrix-scroll { overflow-x: auto; overscroll-behavior-x: contain; scrollbar-width: thin; scrollbar-color: #cbd5e1 #f8fafc; }
+/* Horizontal scroll only. Vertical scrolling belongs to one scroller per screen (the page on the
+   product page, the editor body in My List), so touch and wheel never get trapped in a nested box. */
+.matrix-scroll { overflow-x: auto; overflow-y: hidden; overscroll-behavior-x: contain; scroll-padding-left: 215px; scrollbar-width: thin; scrollbar-color: #cbd5e1 #f8fafc; }
 .matrix-scroll::-webkit-scrollbar { height: 6px; }
 .matrix-scroll::-webkit-scrollbar-track { background: #f8fafc; }
 .matrix-scroll::-webkit-scrollbar-thumb { background: #cbd5e1; border-radius: 999px; }
 .matrix-scroll::-webkit-scrollbar-thumb:hover { background: #94a3b8; }
+
+/* Docked size header: an aria-hidden copy laid exactly over the real header. It is sticky inside the
+   full-height track, so it locks under the top bar when the header reaches it and leaves with the
+   last colour row. Pointer events stay on the copy so a tap on it never reaches a cell beneath. */
+.matrix-grid { position: relative; }
+.matrix-head-track { position: absolute; inset: 0; z-index: 6; pointer-events: none; }
+.matrix-head { position: sticky; top: var(--b2b-sticky-top, 0px); overflow-x: auto; overflow-y: hidden; scrollbar-width: none; pointer-events: auto; background: #f8fafc; transition: box-shadow .2s ease; }
+.matrix-head::-webkit-scrollbar { display: none; }
+.matrix-head.is-stuck { box-shadow: 0 10px 14px -10px rgba(15, 23, 42, .28); }
 
 .matrix-table { font-family: inherit; width: 100%; border-collapse: separate; border-spacing: 0; table-layout: fixed; margin: 0; font-variant-numeric: tabular-nums; }
 .matrix-table tbody tr { transition: background-color .12s ease; }
 .matrix-table tbody tr:hover td,
 .matrix-table tbody tr:hover th { background-color: #f8fafc !important; }
 
-.matrix-table th, .matrix-table td { box-sizing: border-box; border: 0; border-bottom: 1px solid #f1f5f9; text-align: center; }
-.matrix-table thead th { height: 46px; background: #f8fafc; font-weight: 600; font-size: 12px; color: #475569; width: 96px; border-bottom: 1px solid #e2e8f0; text-transform: uppercase; letter-spacing: .03em; transition: color .15s ease; }
-.matrix-table thead th.curve-heading { width: 120px; }
-.matrix-table thead th.selected-size { color: var(--b2b-primary); font-weight: 700; }
-.matrix-table thead th.excluded-size { color: #94a3b8; font-weight: 500; opacity: 0.6; }
-.size-dot { display: inline-block; width: 5px; height: 5px; background: var(--b2b-primary); border-radius: 50%; margin-left: 5px; vertical-align: middle; }
+.matrix-table :deep(th), .matrix-table td { box-sizing: border-box; border: 0; border-bottom: 1px solid #f1f5f9; text-align: center; }
+.matrix-table :deep(thead th) { height: 46px; background: #f8fafc; font-weight: 600; font-size: 12px; color: #475569; width: 96px; border-bottom: 1px solid #e2e8f0; text-transform: uppercase; letter-spacing: .03em; transition: color .15s ease; }
+.matrix-table :deep(thead th.curve-heading) { width: 120px; }
+.matrix-table :deep(thead th.selected-size) { color: var(--b2b-primary); font-weight: 700; }
+.matrix-table :deep(thead th.excluded-size) { color: #94a3b8; font-weight: 500; opacity: 0.6; }
+.matrix-table :deep(.size-dot) { display: inline-block; width: 5px; height: 5px; background: var(--b2b-primary); border-radius: 50%; margin-left: 5px; vertical-align: middle; }
 
-.matrix-table .sticky-col { position: sticky; left: 0; z-index: 2; background: #ffffff; width: 215px; text-align: left; border-right: 1px solid #e2e8f0; transition: box-shadow .2s ease, background-color .12s ease; }
-.matrix-table thead .sticky-col { background: #f8fafc; padding-left: 24px; border-bottom: 1px solid #e2e8f0; }
-.matrix-table .sticky-col.scrolled { box-shadow: 4px 0 10px -2px rgba(0, 0, 0, 0.08); }
-.color-heading span { display: inline-flex; align-items: center; justify-content: center; background: #e2e8f0; color: #475569; padding: 2px 7px; border-radius: 999px; font-size: 10px; font-weight: 700; margin-left: 6px; }
+.matrix-table :deep(.sticky-col) { position: sticky; left: 0; z-index: 2; background: #ffffff; width: 215px; text-align: left; border-right: 1px solid #e2e8f0; transition: box-shadow .2s ease, background-color .12s ease; }
+.matrix-table :deep(thead .sticky-col) { background: #f8fafc; padding-left: 24px; border-bottom: 1px solid #e2e8f0; }
+.matrix-table :deep(thead th.sticky-col) { z-index: 4; }
+.matrix-table :deep(.sticky-col.scrolled) { box-shadow: 4px 0 10px -2px rgba(0, 0, 0, 0.08); }
+.matrix-table :deep(.color-heading span) { display: inline-flex; align-items: center; justify-content: center; background: #e2e8f0; color: #475569; padding: 2px 7px; border-radius: 999px; font-size: 10px; font-weight: 700; margin-left: 6px; }
 
 .color-cell { padding: 14px 16px 14px 24px; }
 .color-info { display: flex; align-items: center; gap: 12px; min-height: 72px; }
@@ -308,15 +377,16 @@ button:focus-visible, .price-toggle input:focus-visible { outline: 2px solid var
 
 @media (max-width: 900px) {
   .table-navigation { padding: 14px 16px; }
-  .matrix-table .sticky-col { width: 190px; }
-  .matrix-table thead .sticky-col { padding-left: 16px; }
+  .matrix-table :deep(.sticky-col) { width: 190px; }
+  .matrix-scroll { scroll-padding-left: 190px; }
+  .matrix-table :deep(thead .sticky-col) { padding-left: 16px; }
   .color-cell { padding: 12px 8px 10px 16px; }
   .color-info { gap: 8px; min-height: 60px; }
   .thumbnail { flex: 0 0 52px; width: 52px; height: 60px; }
   .color-name { font-size: 11px; }
   .row-price { font-size: 11px; margin-top: 3px; }
   .curve-action-group button { width: 46px; height: 46px; }
-  .matrix-table thead th { width: 85px; font-size: 11px; }
+  .matrix-table :deep(thead th) { width: 85px; font-size: 11px; }
   .quantity-cell { padding: 8px 3px; }
   .cell-stack input, .cell-skeleton { width: 100%; max-width: 66px; height: 46px; font-size: 15px; }
 }
@@ -326,15 +396,16 @@ button:focus-visible, .price-toggle input:focus-visible { outline: 2px solid var
   .navigation-actions { width: 100%; gap: 8px; }
   .settings-pill { padding-inline: 8px; font-size: 11px; }
   .curve-chain { display: none; }
-  .matrix-table .sticky-col { width: 155px; }
+  .matrix-table :deep(.sticky-col) { width: 155px; }
+  .matrix-scroll { scroll-padding-left: 155px; }
   .color-cell { padding: 10px 6px 10px 12px; }
-  .matrix-table thead .sticky-col { padding-left: 12px; }
+  .matrix-table :deep(thead .sticky-col) { padding-left: 12px; }
   .color-info { gap: 6px; }
   .thumbnail { flex-basis: 46px; width: 46px; height: 54px; }
-  .matrix-table thead th { width: 78px; }
+  .matrix-table :deep(thead th) { width: 78px; }
   .product-title { font-size: 18px; }
   .product-sku { font-size: 11px; }
-  .matrix-table thead th.curve-heading { width: 112px; }
+  .matrix-table :deep(thead th.curve-heading) { width: 112px; }
   .curve-action-group button { width: 44px; height: 44px; }
 }
 </style>

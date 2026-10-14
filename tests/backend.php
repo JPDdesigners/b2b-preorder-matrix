@@ -108,7 +108,8 @@ function get_term( $term_id, $tax ) { return (object) [ 'term_id' => $term_id, '
 function get_term_meta( $id, $key, $single = true ) { return ''; }
 function get_userdata( $user_id ) { return (object) [ 'ID' => $user_id, 'user_email' => 'test@b2b.test', 'display_name' => $user_id === 19 ? 'Seller' : 'B2B Client' ]; }
 function sanitize_title( $t ) { return strtolower( preg_replace( '/[^a-zA-Z0-9_-]/', '', (string) $t ) ); }
-function sanitize_textarea_field( $t ) { return trim( (string) $t ); }
+function sanitize_textarea_field( $t ) { return trim( strip_tags( (string) $t ) ); }
+function current_time( $format ) { return '2026-10-06 12:00:00'; }
 function sanitize_text_field( $t ) { return trim( (string) $t ); }
 function shortcode_atts( $pairs, $atts, $shortcode = '' ) { return array_intersect_key( (array) $atts, (array) $pairs ) + (array) $pairs; }
 function get_the_ID() { global $post; return $post->ID ?? 0; }
@@ -140,7 +141,7 @@ class WC_Order {
     function get_status() { return $this->status; }
     function set_status( $status ) { $this->status = $status; }
     function set_address( $addr, $type ) { $this->addresses[$type] = $addr; }
-    function set_customer_note( $note ) {}
+    function set_customer_note( $note ) { $this->customer_note = $note; }
     function update_meta_data( $key, $val ) { $this->meta[$key] = $val; }
     function get_meta( $key ) { return $this->meta[$key] ?? ''; }
     function delete_meta_data( $key ) { unset( $this->meta[$key] ); }
@@ -176,6 +177,7 @@ class MockWPDB {
     public $last_error = '';
     public $items = [];
     public $batches = [];
+    public $drafts = [], $prepared = [];
     public $order_item_queries = 0;
     public $last_order_item_sql = '';
     public $fail_order_item_read = false;
@@ -192,6 +194,7 @@ class MockWPDB {
             $val = is_numeric( $arg ) ? $arg : "'" . addslashes( (string) $arg ) . "'";
             $query = preg_replace( '/%[dfs]/', $val, $query, 1 );
         }
+        $this->prepared[$query] = $args;
         return $query;
     }
 
@@ -244,6 +247,11 @@ class MockWPDB {
     }
 
     function get_row( $query, $output = ARRAY_A ) {
+        if ( strpos( $query, 'SELECT customer_note, revision FROM' ) === 0 ) {
+            $this->last_error = !empty($GLOBALS['fail_draft_read']) ? 'Draft read failed' : '';
+            preg_match('/WHERE user_id = (\d+)/', $query, $match);
+            return $this->last_error ? null : ($this->drafts[(int)$match[1]] ?? null);
+        }
         if ( preg_match( '/COUNT\(\*\) as total_items.*WHERE user_id = (\d+)/i', $query, $m ) ) {
             $user_id = (int) $m[1];
             $total_items = 0;
@@ -296,8 +304,8 @@ class MockWPDB {
     }
 
     function query( $query ) {
-        if ( $query === 'START TRANSACTION' ) { $this->transaction = [ $this->items, $this->batches ]; return true; }
-        if ( $query === 'ROLLBACK' ) { if ( $this->transaction ) { [ $this->items, $this->batches ] = $this->transaction; } $this->last_error = ''; return true; }
+        if ( $query === 'START TRANSACTION' ) { $this->transaction = [ $this->items, $this->batches, $this->drafts ]; return true; }
+        if ( $query === 'ROLLBACK' ) { if ( $this->transaction ) { [ $this->items, $this->batches, $this->drafts ] = $this->transaction; } $this->last_error = ''; return true; }
         if ( $query === 'COMMIT' ) { $this->transaction = null; return true; }
         if ( stripos( $query, 'CREATE TABLE' ) !== false ) {
             return true;
@@ -310,6 +318,13 @@ class MockWPDB {
             return false;
         }
         $this->last_error = '';
+
+        if ( strpos($query, 'INSERT INTO ' . B2B_Matrix_DB::table_drafts()) === 0 ) {
+            if (!empty($GLOBALS['fail_draft_write'])) { $this->last_error = 'Draft write failed'; return false; }
+            [$uid, $note] = $this->prepared[$query];
+            $this->drafts[$uid] = ['customer_note' => $note, 'revision' => ($this->drafts[$uid]['revision'] ?? 0) + 1];
+            return 1;
+        }
 
         if ( preg_match( '/DELETE FROM .* WHERE user_id = (\d+) AND variation_id IN \(([^)]+)\)/i', $query, $m ) ) {
             $user_id = (int) $m[1];
@@ -459,6 +474,8 @@ function fixture() {
         ],
     ];
     $wpdb->batches = [];
+    $wpdb->drafts = $wpdb->prepared = [];
+    $GLOBALS['fail_draft_write'] = $GLOBALS['fail_draft_read'] = false;
     $_GET = $_POST = $_REQUEST = [];
 }
 function check( $condition, $message = 'Assertion failed' ) { if ( ! $condition ) { throw new Exception( $message ); } }
@@ -705,6 +722,17 @@ $tests = [
         $GLOBALS['access'] = false; error_is( B2B_Preorder_List::check_permission(), 'b2b_forbidden' );
         $GLOBALS['access'] = true; error_is( B2B_Preorder_List::dispatch('empty', ['expected_user_id'=>8]), 'account_changed' );
         error_is( B2B_Preorder_List::check_permission(new Request([], 'bad')), 'rest_invalid_nonce' );
+    },
+    'emptying the list requires the typed confirmation word before any write' => function() {
+        global $wpdb;
+        foreach ( [ null, '', 'yes', 'delet', [ 'delete' ] ] as $confirm ) {
+            $params = [ 'expected_user_id' => 7 ];
+            if ( $confirm !== null ) { $params['confirm'] = $confirm; }
+            error_is( B2B_Preorder_List::dispatch( 'empty', $params ), 'confirmation_required' );
+        }
+        check( $GLOBALS['write_count'] === 0 && ! empty( $wpdb->items[7] ) );
+        $result = B2B_Preorder_List::dispatch( 'empty', [ 'expected_user_id' => 7, 'confirm' => ' Delete ' ] );
+        check( ! is_wp_error( $result ) && $result['success'] === true && empty( $wpdb->items[7] ) );
     },
     'shortcode HTML is identical across sessions and contains no personal payload' => function() {
         $a = B2B_Preorder_List::render_shortcode([]); $GLOBALS['logged_in']=false;
@@ -955,6 +983,12 @@ $tests = [
     'lock contention rejects changes rather than overwriting data' => function() {
         $GLOBALS['lock_failure']=true; error_is(save([['id'=>10,'qty'=>20]]), 'list_busy'); check($GLOBALS['wpdb']->items[7][10]['qty']===2);
     },
+    'lock contention on matrix reads returns list_busy instead of a fatal' => function() {
+        $GLOBALS['lock_failure']=true;
+        $r = B2B_Matrix_API::build_matrix_payload( 100, 7 );
+        error_is( $r, 'list_busy' ); check( $r->get_error_data()['status'] === 503 );
+        error_is( B2B_Matrix_API::rest_get_all_preorder_items( new Request( [] ) ), 'list_busy' );
+    },
     'greek and uppercase variation attributes resolve correctly' => function() {
         list($c, $s) = B2B_Matrix_Catalog::resolve_color_size_keys(['pa_xroma' => ['red'], 'pa_megethos' => ['l']]);
         check($c === 'pa_xroma' && $s === 'pa_megethos');
@@ -997,7 +1031,7 @@ $tests = [
     },
 ];
 // Buffer test output so PHP header calls can still run in the AJAX fixtures.
-$tests = array_merge( $tests, require __DIR__ . '/order-channel-cases.php' );
+$tests = array_merge( $tests, require __DIR__ . '/order-channel-cases.php', require __DIR__ . '/draft-note-cases.php' );
 ob_start();
 $failed = 0;
 foreach ( $tests as $name => $test ) { fixture(); try { $test(); echo "PASS $name\n"; } catch ( Throwable $e ) { $failed++; echo "FAIL $name: " . $e->getMessage() . "\n"; } }

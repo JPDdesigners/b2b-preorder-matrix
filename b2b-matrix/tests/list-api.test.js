@@ -3,6 +3,24 @@ import assert from 'node:assert/strict';
 import { createListApi } from '../src/listApi.js';
 const origin = 'https://shop.test';
 const ok = data => new Response(JSON.stringify({ success: true, data }));
+
+test('draft reads cannot silently switch accounts and note writes carry revision, fresh nonce and only note text', async () => {
+ const calls=[];
+ const api=createListApi('/ajax', async (url,options) => {
+  const fields=options.body || url.searchParams; calls.push({fields,options});
+  return ok(fields.get('action')==='b2b_matrix_session' ? {user_id:7,nonce:'new'} : fields.get('action')==='b2b_get_preorder_note' ? {user_id:8,draft:{note:'Private',revision:'r2'}} : {user_id:7,note:'Text',revision:'r2'});
+ },origin);
+ await api.read('list-data'); await api.write('save-note',{customer_note:'Text',note_revision:'r1'});
+ const sent=calls[2].fields;
+ assert.equal(sent.get('action'),'b2b_save_preorder_note'); assert.equal(sent.get('security'),'new'); assert.equal(sent.get('note_revision'),'r1'); assert.equal(sent.get('customer_note'),'Text'); assert.equal(sent.get('expected_user_id'),'7'); assert.equal(sent.has('items'),false);
+ await assert.rejects(api.read('draft-note'),{code:'account_changed'});
+});
+test('list reload rejects a changed account before hydrating its private draft', async () => {
+ let uid=7;
+ const api=createListApi('/ajax', async()=>ok({user_id:uid}),origin);
+ await api.read('list-data'); uid=8;
+ await assert.rejects(api.read('list-data'),{code:'account_changed'});
+});
 test('list bootstrap is uncached and every write gets a fresh nonce with expected account', async () => {
  const calls = [];
  const api = createListApi('/sub/wp-admin/admin-ajax.php', async (url, options) => {

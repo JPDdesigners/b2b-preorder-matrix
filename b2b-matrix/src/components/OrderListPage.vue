@@ -3,10 +3,10 @@
   <B2BCard class="list-top-card">
    <header class="list-hero">
    <div class="list-hero-icon"><UiIcon name="clipboard-check" /></div>
-   <div class="list-hero-copy"><p class="list-eyebrow">ΠΡΟΠΑΡΑΓΓΕΛΙΕΣ <span v-if="payload.season">/ {{ payload.season }}</span></p><h1>Η λίστα μου</h1><p>Επιλέξτε προϊόντα και ελέγξτε τις ποσότητες πριν την υποβολή.</p></div>
+   <div class="list-hero-copy"><p class="list-eyebrow">ΠΡΟΠΑΡΑΓΓΕΛΙΕΣ <span v-if="payload.season">/ {{ payload.season }}</span></p><h1>Η λίστα μου</h1><p>Επιλέξτε κωδικούς και ελέγξτε τις ποσότητες πριν την υποβολή.</p></div>
    </header>
-   <section v-if="loaded && !loginRequired" ref="quickAdd" class="quick-add" aria-label="Προσθήκη προϊόντος" @focusout="catalogFocusOut">
-    <div class="quick-add-heading"><UiIcon name="plus" /><h2>Προσθήκη προϊόντος</h2></div>
+   <section v-if="loaded && !loginRequired" ref="quickAdd" class="quick-add" aria-label="Προσθήκη κωδικού" @focusout="catalogFocusOut">
+    <div class="quick-add-heading"><UiIcon name="plus" /><h2>Προσθήκη κωδικού</h2></div>
     <div ref="catalogSearchRow" class="catalog-search-row"><div class="catalog-search-field"><UiIcon name="search" /><input v-model="catalogQuery" class="b2b-field" type="search" aria-label="Αναζήτηση στον κατάλογο" autocomplete="off" enterkeyhint="go" :inputmode="numeric ? 'numeric' : 'search'" :disabled="locked" placeholder="Κωδικός ή όνομα…" @input="searchCatalog()" @focus="showCatalogResults" @click="showCatalogResults" @keydown.enter="enterCatalog" @keydown.esc.prevent="hideCatalogResults" /></div><button type="button" class="keyboard-switch" :aria-pressed="numeric" :disabled="locked" :aria-label="numeric ? 'Αλλαγή σε αλφαβητικό πληκτρολόγιο' : 'Αλλαγή σε αριθμητικό πληκτρολόγιο'" @click="numeric = !numeric" @keydown.tab="tabIntoCatalog"><UiIcon name="keyboard" /><span>{{ numeric ? '123' : 'ABC' }}</span></button></div>
     <Teleport to="body">
     <div v-if="catalogResultsOpen && (searching || searchError || results.length || searched)" ref="catalogPanel" class="b2b-ui catalog-search-results" :class="'catalog-panel-' + catalogPlacement" :style="{ ...themeStyle, ...catalogPanelStyle }" :popover="catalogUsesPopover ? 'manual' : undefined" role="region" aria-label="Αποτελέσματα καταλόγου" @mousedown.prevent @focusout="catalogFocusOut" @keydown.esc.prevent="hideCatalogResults">
@@ -14,7 +14,7 @@
      <div class="catalog-results-scroll">
      <p v-if="searching" class="catalog-search-status" role="status">Αναζήτηση…</p><p v-else-if="searchError" class="catalog-search-status catalog-search-error" role="alert">{{ searchError }}</p>
      <template v-else-if="results.length"><p v-if="catalogEnterHint" class="catalog-search-status" role="status">{{ catalogEnterHint }}</p><button v-for="product in catalogResults" :key="product.id" type="button" class="b2b-result" :disabled="locked" @click="openMatrix(product.id, true)"><img v-if="product.image" :src="product.image" alt="" loading="lazy" decoding="async" class="b2b-u-h-14 b2b-u-w-11 b2b-u-object-cover b2b-u-rounded-b2b-sm" /><span class="b2b-u-min-w-0 b2b-u-flex-1"><span class="b2b-u-block b2b-u-text-xs b2b-u-text-zinc-500">{{ product.sku }}<template v-if="product.brand_name"> · {{ product.brand_name }}</template></span><span v-if="product.matched_sku && product.matched_sku !== product.sku" class="catalog-variation-sku">SKU παραλλαγής: {{ product.matched_sku }}</span><span class="b2b-u-block b2b-u-font-medium">{{ product.name }}</span><span v-if="product.in_list" class="catalog-in-list">Ήδη στη λίστα</span></span><UiIcon :name="product.in_list ? 'edit' : 'plus'" /></button></template>
-     <p v-else class="catalog-search-status" role="status">Δεν βρέθηκαν προϊόντα.</p>
+     <p v-else class="catalog-search-status" role="status">Δεν βρέθηκαν κωδικοί.</p>
      </div>
      <p v-if="!searching && results.length === 8" class="catalog-results-more">Γράψτε περισσότερα για πιο συγκεκριμένα αποτελέσματα.</p>
     </div>
@@ -30,35 +30,35 @@
    <div class="b2b-u-grid b2b-u-items-start b2b-u-gap-6 list-content-grid">
     <div class="b2b-u-min-w-0">
      <B2BCard class="product-list-card">
-      <div class="products-heading"><div class="section-heading"><span class="section-icon"><UiIcon name="layers" /></span><h2>Προϊόντα <span class="count-pill">{{ items.length }}</span></h2></div></div>
+      <div class="products-heading"><div class="section-heading"><span class="section-icon"><UiIcon name="layers" /></span><h2>Κωδικοί σχεδίου <span class="count-pill">{{ items.length }}</span></h2></div></div>
       <div v-if="items.length" class="list-filters">
        <div class="list-filter-actions"><div class="root-tabs" role="group" aria-label="Κατηγορίες ρίζας"><button type="button" :class="{ active: !rootId }" :aria-pressed="!rootId" @click="rootId = ''; category = ''">Όλα</button><button v-for="root in roots" :key="root.id" type="button" :class="{ active: rootId === String(root.id) }" :aria-pressed="rootId === String(root.id)" @click="rootId = rootId === String(root.id) ? '' : String(root.id); category = ''">{{ root.name }}</button></div><B2BButton class="empty-list-button" variant="outline" size="sm" icon="trash" :disabled="locked" @click="confirmEmpty">Άδειασμα λίστας</B2BButton></div>
-       <div v-if="items.length" class="filter-toolbar"><div class="filter-controls"><div class="category-select"><select v-model="category" class="b2b-field" aria-label="Φίλτρο υποκατηγορίας"><option value="">Όλες οι υποκατηγορίες</option><option v-for="c in categories" :key="c.id" :value="String(c.id)">{{ !rootId && c.root_name ? c.root_name + ' / ' + c.name : c.name }}</option></select><UiIcon name="chevron-down" /></div><div class="list-search-field"><UiIcon name="search" /><input v-model="filter" class="b2b-field" type="search" aria-label="Αναζήτηση στη λίστα" placeholder="Αναζήτηση στη λίστα…" /></div></div><div class="filter-subtotal" role="status"><div class="subtotal-heading"><UiIcon name="clipboard-check" /><span>Υποσύνολο προβολής</span></div><div class="subtotal-body"><div class="subtotal-counts"><span>{{ filtered.length }} {{ filtered.length === 1 ? 'προϊόν' : 'προϊόντα' }}</span><span>{{ filteredTotals.qty }} τεμάχια</span></div><strong v-if="loading" class="inline-skeleton wide"></strong><strong v-else>{{ filteredTotals.unpriced ? '—' : money(filteredTotals.value) }}</strong></div></div></div>
+       <div v-if="items.length" class="filter-toolbar"><div class="filter-controls"><div class="category-select"><select v-model="category" class="b2b-field" aria-label="Φίλτρο υποκατηγορίας"><option value="">Όλες οι υποκατηγορίες</option><option v-for="c in categories" :key="c.id" :value="String(c.id)">{{ !rootId && c.root_name ? c.root_name + ' / ' + c.name : c.name }}</option></select><UiIcon name="chevron-down" /></div><div class="list-search-field"><UiIcon name="search" /><input v-model="filter" class="b2b-field" type="search" aria-label="Αναζήτηση στη λίστα" placeholder="Αναζήτηση στη λίστα…" /></div></div><div class="filter-subtotal" role="status"><div class="subtotal-heading"><UiIcon name="clipboard-check" /><span>Υποσύνολο προβολής</span></div><div class="subtotal-body"><div class="subtotal-counts"><span>{{ filtered.length }} {{ filtered.length === 1 ? 'κωδικός' : 'κωδικοί' }}</span><span>{{ filteredTotals.qty }} τεμάχια</span></div><strong v-if="loading" class="inline-skeleton wide"></strong><strong v-else>{{ filteredTotals.unpriced ? '—' : money(filteredTotals.value) }}</strong></div></div></div>
       </div>
-      <div v-if="!items.length" class="b2b-u-py-16 b2b-u-px-6 b2b-u-text-center"><div class="b2b-u-mx-auto b2b-u-mb-4 b2b-u-flex b2b-u-h-12 b2b-u-w-12 b2b-u-items-center b2b-u-justify-center b2b-u-rounded-b2b-lg b2b-u-bg-primary-soft b2b-u-text-primary"><UiIcon name="clipboard-check" /></div><h3 class="b2b-u-text-lg b2b-u-font-semibold">Η λίστα σας είναι έτοιμη να γεμίσει</h3><p class="b2b-u-mt-2 b2b-u-text-sm b2b-u-text-zinc-500">Βρείτε ένα προϊόν και επιλέξτε ποσότητες στον πίνακα.</p></div>
-      <div v-else-if="!filtered.length" class="b2b-u-p-10 b2b-u-text-center b2b-u-text-zinc-500">Δεν υπάρχουν προϊόντα με αυτά τα φίλτρα.<B2BButton variant="ghost" @click="filter = ''; rootId = ''; category = ''">Καθαρισμός φίλτρων</B2BButton></div>
-      <div v-if="filtered.length" class="product-columns-heading" :style="{ paddingRight: (25 + listScrollbarWidth) + 'px' }" aria-hidden="true"><span>Προϊόν</span><span>Τεμάχια</span><span>Αξία</span><span></span></div>
-      <div v-if="filtered.length" ref="listViewport" class="product-window" :style="{ height: listHeight + 'px' }" role="list" aria-label="Προϊόντα λίστας" tabindex="0" @scroll="onListScroll"><div class="b2b-list-virtual-spacer" :style="{ height: filtered.length * rowHeight + 'px' }">
+      <div v-if="!items.length" class="b2b-u-py-16 b2b-u-px-6 b2b-u-text-center"><div class="b2b-u-mx-auto b2b-u-mb-4 b2b-u-flex b2b-u-h-12 b2b-u-w-12 b2b-u-items-center b2b-u-justify-center b2b-u-rounded-b2b-lg b2b-u-bg-primary-soft b2b-u-text-primary"><UiIcon name="clipboard-check" /></div><h3 class="b2b-u-text-lg b2b-u-font-semibold">Η λίστα σας είναι έτοιμη να γεμίσει</h3><p class="b2b-u-mt-2 b2b-u-text-sm b2b-u-text-zinc-500">Βρείτε έναν κωδικό και επιλέξτε ποσότητες στον πίνακα.</p></div>
+      <div v-else-if="!filtered.length" class="b2b-u-p-10 b2b-u-text-center b2b-u-text-zinc-500">Δεν υπάρχουν κωδικοί με αυτά τα φίλτρα.<B2BButton variant="ghost" @click="filter = ''; rootId = ''; category = ''">Καθαρισμός φίλτρων</B2BButton></div>
+      <div v-if="filtered.length" class="product-columns-heading" :style="{ paddingRight: (25 + listScrollbarWidth) + 'px' }" aria-hidden="true"><span>Κωδικός</span><span>Τεμάχια</span><span>Αξία</span><span></span></div>
+      <div v-if="filtered.length" ref="listViewport" class="product-window" :style="{ height: listHeight + 'px' }" role="list" aria-label="Κωδικοί λίστας" tabindex="0" @scroll="onListScroll"><div class="b2b-list-virtual-spacer" :style="{ height: filtered.length * rowHeight + 'px' }">
        <div v-for="(item, index) in visibleItems" :key="item.id" class="b2b-list-virtual-row" :style="{ top: (visibleRange.start + index) * rowHeight + 'px', height: rowHeight + 'px' }"><article class="b2b-list-product-row" role="listitem" :aria-posinset="visibleRange.start + index + 1" :aria-setsize="filtered.length">
-        <div class="b2b-list-product-main"><div class="b2b-list-product-media"><button type="button" class="b2b-list-product-remove" :disabled="locked" :aria-label="'Αφαίρεση ' + item.name" title="Αφαίρεση προϊόντος" @click="confirmRemove(item)"><UiIcon name="trash" /></button><img v-if="item.image" :src="item.image" :alt="item.name" loading="lazy" /><span v-else class="b2b-list-product-image-empty"><UiIcon name="layers" /></span></div>
+        <div class="b2b-list-product-main"><div class="b2b-list-product-media"><button type="button" class="b2b-list-product-remove" :disabled="locked" :aria-label="'Αφαίρεση ' + item.name" title="Αφαίρεση κωδικού" @click="confirmRemove(item)"><UiIcon name="trash" /></button><img v-if="item.image" :src="item.image" :alt="item.name" loading="lazy" /><span v-else class="b2b-list-product-image-empty"><UiIcon name="layers" /></span></div>
         <div class="b2b-list-product-info"><p class="b2b-list-product-meta"><span :title="item.sku">{{ item.sku || 'Χωρίς κωδικό' }}</span><span v-if="item.brand_name" class="b2b-list-brand-badge" :title="item.brand_name">{{ item.brand_name }}</span></p><h3 :title="item.name">{{ item.name }}</h3><p v-if="item.unavailable || item.unpriced" class="b2b-list-product-warning" :title="item.unavailable ? 'Περιέχει μη διαθέσιμες παραλλαγές' : 'Δεν υπάρχει τιμή για όλες τις παραλλαγές'"><UiIcon name="alert" /><span>{{ item.unavailable ? 'Περιέχει μη διαθέσιμες παραλλαγές' : 'Δεν υπάρχει τιμή για όλες τις παραλλαγές' }}</span></p></div></div>
         <div class="b2b-list-product-column b2b-list-product-quantity"><span class="b2b-list-product-column-label">Τεμάχια</span><span v-if="loading" class="inline-skeleton" aria-label="Φόρτωση ποσότητας"></span><strong v-else>{{ item.total_qty }}</strong></div>
         <div class="b2b-list-product-column b2b-list-product-value"><span class="b2b-list-product-column-label">Αξία</span><span v-if="loading" class="inline-skeleton wide" aria-label="Φόρτωση αξίας"></span><strong v-else>{{ item.unpriced ? '—' : money(item.total_val) }}</strong></div>
         <B2BButton class="b2b-list-product-edit" variant="outline" size="md" icon="edit" :disabled="locked || item.unavailable" @click="openMatrix(item.id)">Αλλαγή</B2BButton>
        </article></div>
-      </div></div><div v-if="items.length" class="list-bottom-bar"><p>{{ filtered.length }} από {{ items.length }} προϊόντα</p></div>
+      </div></div><div v-if="items.length" class="list-bottom-bar"><p>{{ filtered.length }} από {{ items.length }} κωδικοί</p></div>
      </B2BCard>
     </div>
     <aside class="list-sidebar" aria-label="Στοιχεία και σύνοψη προπαραγγελίας">
      <B2BCard class="sidebar-card">
       <section class="sidebar-section customer-section" aria-label="Στοιχεία πελάτη"><div class="section-heading"><span class="section-icon"><UiIcon name="user" /></span><h2>Στοιχεία πελάτη</h2></div><dl class="customer-details"><div><dt>Επωνυμία</dt><dd><span v-if="loading" class="inline-skeleton wide"></span><strong v-else>{{ payload.customerInfo?.company || '—' }}</strong></dd></div><div><dt>ΑΦΜ</dt><dd><span v-if="loading" class="inline-skeleton"></span><strong v-else>{{ payload.customerInfo?.afm || '—' }}</strong></dd></div><div><dt>Email τιμολόγησης</dt><dd><span v-if="loading" class="inline-skeleton wide"></span><strong v-else class="customer-email">{{ payload.customerInfo?.email || '—' }}</strong></dd></div></dl></section>
-      <section class="sidebar-section note-section" aria-label="Σημείωση πελάτη"><div class="section-heading"><span class="section-icon"><UiIcon name="edit" /></span><h2><label :for="noteId">Σημείωση πελάτη</label></h2></div><textarea :id="noteId" v-model="note" class="b2b-field" rows="3" maxlength="4000" :disabled="locked" placeholder="Κάτι που θέλετε να γνωρίζουμε…"></textarea></section>
+      <section class="sidebar-section note-section" aria-label="Σημείωση πελάτη"><div class="section-heading"><span class="section-icon"><UiIcon name="edit" /></span><h2><label :for="noteId">Σημείωση πελάτη</label></h2></div><textarea :id="noteId" v-model="note" class="b2b-field" rows="3" maxlength="4000" :disabled="locked || noteState.status === 'loading'" :aria-describedby="noteId + '-status'" placeholder="Κάτι που θέλετε να γνωρίζουμε…" @blur="saveNote"></textarea><p :id="noteId + '-status'" class="note-save-status" :class="{ 'note-save-error': ['error', 'conflict'].includes(noteState.status) }" role="status" aria-live="polite">{{ noteStatusText }}</p><p v-if="noteState.status === 'conflict' && noteState.remoteNote !== null" class="note-remote-preview"><strong>Αποθηκευμένο σχόλιο:</strong><br />{{ noteState.remoteNote || '(Κενό σχόλιο)' }}</p><div v-if="noteState.status === 'conflict'" class="note-conflict-actions"><B2BButton size="sm" variant="outline" :disabled="locked" @click="resolveNote(false)">Φόρτωση αποθηκευμένου</B2BButton><B2BButton size="sm" variant="outline" :disabled="locked" @click="resolveNote(true)">Κράτημα δικού μου</B2BButton></div><B2BButton v-else-if="noteState.status === 'error'" size="sm" variant="outline" :disabled="locked" @click="saveNote">Δοκιμή ξανά</B2BButton></section>
       <section v-if="channelSelection?.canChoose" class="sidebar-section order-channel-section" aria-label="Προέλευση παραγγελίας">
        <label class="order-channel-toggle"><input v-model="channelSelection.live" type="checkbox" :disabled="locked" /><span>Παραγγελία από live δειγματισμό</span></label>
        <p v-if="activeBatch">Η προέλευση έχει αποθηκευτεί στην καταχώριση{{ activeBatch.order_channel === 'unknown' ? ' ως μη καταγεγραμμένη' : '' }}.</p>
        <p v-else>Επιλέξτε όταν καταχωρίζετε την παραγγελία μαζί με τον πελάτη στον δειγματισμό.</p>
       </section>
-      <section class="sidebar-section summary-section" aria-label="Σύνοψη λίστας"><div class="section-heading"><span class="section-icon"><UiIcon name="clipboard-check" /></span><h2>Σύνοψη λίστας</h2></div><div class="summary-total"><div class="summary-value"><span>Γενικό σύνολο</span><strong v-if="loading" class="inline-skeleton wide"></strong><strong v-else>{{ hasUnpriced ? '—' : money(payload.totalVal || 0) }}</strong><dl class="summary-rows"><div><dt>Προϊόντα</dt><dd><strong v-if="loading" class="inline-skeleton"></strong><strong v-else>{{ items.length }}</strong></dd></div><div><dt>Τεμάχια</dt><dd><strong v-if="loading" class="inline-skeleton"></strong><strong v-else>{{ payload.totalQty || 0 }}</strong></dd></div></dl></div><B2BButton class="submit-list" icon="send" size="lg" :disabled="locked || !items.length || hasInvalid" @click="confirmSubmit">Υποβολή λίστας</B2BButton></div></section>
+      <section class="sidebar-section summary-section" aria-label="Σύνοψη λίστας"><div class="section-heading"><span class="section-icon"><UiIcon name="clipboard-check" /></span><h2>Σύνοψη λίστας</h2></div><div class="summary-total"><div class="summary-value"><span>Γενικό σύνολο</span><strong v-if="loading" class="inline-skeleton wide"></strong><strong v-else>{{ hasUnpriced ? '—' : money(payload.totalVal || 0) }}</strong><dl class="summary-rows"><div><dt>Κωδικοί</dt><dd><strong v-if="loading" class="inline-skeleton"></strong><strong v-else>{{ items.length }}</strong></dd></div><div><dt>Τεμάχια</dt><dd><strong v-if="loading" class="inline-skeleton"></strong><strong v-else>{{ payload.totalQty || 0 }}</strong></dd></div></dl></div><B2BButton class="submit-list" icon="send" size="lg" :disabled="locked || !items.length || hasInvalid" @click="confirmSubmit">Υποβολή λίστας</B2BButton></div></section>
      </B2BCard>
     </aside>
    </div>
@@ -75,13 +75,15 @@
    </section>
   </DialogModal>
   <DialogModal :open="!!confirmation" :label="confirmation?.title || 'Επιβεβαίωση'" @close="!busy && (confirmation = null)"><h2 class="b2b-u-text-lg b2b-u-font-semibold">{{ confirmation?.title }}</h2><p class="b2b-u-my-4 b2b-u-text-sm b2b-u-text-zinc-500">{{ confirmation?.message }}</p><div class="b2b-u-flex b2b-u-justify-end b2b-u-gap-2"><B2BButton variant="outline" :disabled="busy" @click="confirmation = null">Πίσω</B2BButton><B2BButton :variant="confirmation?.danger ? 'danger' : 'primary'" :loading="busy" @click="runConfirmation">{{ confirmation?.label || 'Επιβεβαίωση' }}</B2BButton></div></DialogModal>
+  <EmptyListDialog :open="emptyOpen" :busy="emptying" :item-count="items.length" :total-qty="Number(payload.totalQty) || 0" :total-value="hasUnpriced ? '—' : money(payload.totalVal || 0)" :has-note="!!String(note || '').trim()" @close="emptyOpen = false" @confirm="emptyList" />
   <DialogModal :open="progressOpen" label="Καταχώριση προπαραγγελίας" @close="!submitting && !redirecting && (progressOpen = false)">
    <div class="submission-progress">
     <span class="submission-pill"><UiIcon :name="submitError ? 'alert' : 'clock'" />{{ submitError ? 'Η καταχώριση σταμάτησε' : redirecting ? 'Μετάβαση στις παραγγελίες' : finalizing ? 'Ολοκλήρωση παραγγελίας' : 'Σε εξέλιξη' }}</span>
     <h2>Καταχώριση προπαραγγελίας</h2>
     <p class="submission-instruction">Κρατήστε αυτό το παράθυρο ανοιχτό μέχρι να ολοκληρωθεί η καταχώριση.</p>
     <p class="submission-help">Αν διακοπεί η σύνδεση, μπορείτε να συνεχίσετε από το ίδιο σημείο.</p>
-    <div class="submission-meter"><div class="submission-counter" role="status"><span v-if="redirecting">Η παραγγελία καταχωρίστηκε. Μεταφέρεστε στις παραγγελίες σας…</span><span v-else-if="finalizing">Περιμένετε, ολοκληρώνουμε την παραγγελία και υπολογίζουμε τα σύνολα…</span><span v-else-if="progress?.total">{{ progress.processed }} / {{ progress.total }} παραλλαγές</span><span v-else>Προετοιμασία λίστας…</span><strong v-if="progress?.total && !finalizing && !redirecting">{{ progressPercent }}%</strong></div><progress class="b2b-progress" aria-label="Πρόοδος καταχώρισης προπαραγγελίας" :value="progress?.total && !finalizing && !redirecting ? progress.processed : undefined" :max="progress?.total || 1"></progress></div>
+    <ol class="submission-stages" aria-label="Στάδια καταχώρισης"><li v-for="(stage, index) in submissionStages" :key="stage" :class="{ done: submissionStage > index, current: submissionStage === index }" :aria-current="submissionStage === index ? 'step' : undefined"><span>{{ submissionStage > index ? '✓' : index + 1 }}</span>{{ stage }}</li></ol>
+    <div class="submission-meter"><div class="submission-counter" role="status" aria-live="polite"><span v-if="redirecting">Η παραγγελία καταχωρίστηκε. Μεταφέρεστε στις παραγγελίες σας…</span><span v-else-if="finalizing">Υπολογισμός συνόλων και ολοκλήρωση παραγγελίας…</span><span v-else-if="submissionStage === 1 && progress?.total">{{ progress.processed }} / {{ progress.total }} γραμμές παραγγελίας</span><span v-else>Αποθήκευση σχολίου και προετοιμασία λίστας…</span><strong v-if="submissionStage === 1 || progress?.complete">{{ progressPercent }}%</strong></div><div class="b2b-progress" :class="{ 'is-indeterminate': !submitError && !progress?.complete && submissionStage !== 1, 'is-stopped': !!submitError }" role="progressbar" aria-label="Πρόοδος τρέχοντος σταδίου" :aria-valuemin="submissionStage === 1 || progress?.complete ? 0 : undefined" :aria-valuemax="submissionStage === 1 || progress?.complete ? 100 : undefined" :aria-valuenow="submissionStage === 1 || progress?.complete ? progressPercent : undefined" :aria-valuetext="submissionStages[submissionStage]"><span :style="{ width: (progress?.complete ? 100 : submissionStage === 1 ? progressPercent : 35) + '%' }"></span></div><p v-if="finalizing && progress?.total" class="submission-lines-done">Καταχώριση γραμμών: {{ progress.processed }} / {{ progress.total }} · {{ progressPercent }}%</p></div>
     <template v-if="submitError"><p role="alert" class="submission-error">{{ submitError }}</p><div class="submission-actions"><B2BButton variant="outline" @click="progressOpen = false">Κλείσιμο</B2BButton><B2BButton icon="refresh" @click="submit">Συνέχιση</B2BButton></div></template>
    </div>
   </DialogModal>
@@ -91,6 +93,7 @@
 <script setup>
 import { ref, computed, watch, provide, nextTick, onMounted, onUnmounted, useId } from 'vue';
 import { orderChannelSelection } from '../orderChannel.js';
+import { createDraftNote } from '../draftNote.js';
 import { applySavedListPatch, hasConfirmedListQuote } from '../listState.js';
 import { exactCatalogProduct, canSearchCatalog, catalogWithMembership, catalogPanelPlacement, CATALOG_SEARCH_DELAY } from '../catalogSearch.js';
 import B2BButton from './ui/B2BButton.vue';
@@ -98,6 +101,8 @@ import B2BCard from './ui/B2BCard.vue';
 import UiIcon from './UiIcon.vue';
 import DialogModal from './DialogModal.vue';
 import MatrixModal from './MatrixModal.vue';
+import EmptyListDialog from './EmptyListDialog.vue';
+import { EMPTY_CONFIRM_WORD } from '../emptyConfirm.js';
 import { appearanceStyle, THEME_KEY, SYSTEM_FONT } from '../theme.js';
 import { useMatrixStore } from '../stores/matrixStore.js';
 import { createListApi } from '../listApi.js';
@@ -110,9 +115,21 @@ const noteId = useId(), payload = ref({}), loaded = ref(false), loading = ref(fa
 const font = ref(SYSTEM_FONT), themeStyle = computed(() => appearanceStyle(payload.value.appearance, font.value));
 provide(THEME_KEY, themeStyle);
 const items = computed(() => payload.value.items || []), activeBatch = computed(() => payload.value.activeBatch);
-const locked = computed(() => busy.value || loading.value || redirecting.value || !!activeBatch.value);
+const resolvingNote = ref(false);
+const locked = computed(() => busy.value || loading.value || resolvingNote.value || redirecting.value || !!activeBatch.value);
 const hasUnpriced = computed(() => items.value.some(i => i.unpriced)), hasInvalid = computed(() => !hasConfirmedListQuote(payload.value) || items.value.some(i => i.unavailable || i.unpriced));
-const rootId = ref(''), category = ref(''), filter = ref(''), note = ref('');
+const rootId = ref(''), category = ref(''), filter = ref('');
+const noteState = ref({ note: '', dirty: false, status: 'loading', error: '' });
+const noteDraft = createDraftNote({
+ read: async () => { try { return (await client().read('draft-note')).draft; } catch (e) { showError(e); throw e; } },
+ write: async params => { try { return await client().write('save-note', params); } catch (e) { if (e.status === 401 || e.code === 'account_changed') showError(e); throw e; } },
+ publish: state => { noteState.value = state; },
+});
+const note = computed({ get: () => noteState.value.note, set: value => noteDraft.edit(value) });
+const noteStatusText = computed(() => ({ loading: 'Φόρτωση σχολίου…', dirty: 'Μη αποθηκευμένες αλλαγές…', saving: 'Αποθήκευση…', saved: 'Αποθηκεύτηκε στον λογαριασμό σας.', error: noteState.value.error, conflict: noteState.value.error })[noteState.value.status]);
+async function saveNote() { try { await noteDraft.flush(); } catch { /* visible note status; submission also requires a successful save */ } }
+async function resolveNote(keepMine) { if (resolvingNote.value) return; resolvingNote.value = true; try { await noteDraft.resolve(keepMine); } catch (e) { error.value = e.message; } finally { resolvingNote.value = false; } }
+async function refreshNote() { if (loaded.value && !locked.value && !loginRequired.value) { try { await noteDraft.refresh(); } catch { /* load/session error is visible */ } } }
 const channelSelection = ref(null);
 const roots = computed(() => rootOptions(items.value));
 const categories = computed(() => categoryOptions(items.value, rootId.value));
@@ -137,10 +154,10 @@ const formatter = computed(() => new Intl.NumberFormat('el-GR', { style: 'curren
 const money = value => formatter.value.format(value);
 let api;
 function client() { return api ||= createListApi(config.ajaxUrl); }
-function showError(e) { error.value = e.message; if (e.status === 401 || e.code === 'account_changed') { payload.value = {}; loaded.value = false; matrixOpen.value = false; removalNoticeOpen.value = false; } if (e.status === 401) loginRequired.value = true; }
+function showError(e) { error.value = e.message; if (e.status === 401 || e.code === 'account_changed') { noteDraft.reset(); payload.value = {}; loaded.value = false; matrixOpen.value = false; removalNoticeOpen.value = false; } if (e.status === 401) loginRequired.value = true; }
 async function load() {
  loading.value = true; error.value = ''; loginRequired.value = false;
- try { payload.value = await client().read('list-data'); channelSelection.value = orderChannelSelection(payload.value, channelSelection.value); loaded.value = true; removalNoticeOpen.value = !!payload.value.removedItems?.length; }
+ try { payload.value = await client().read('list-data'); noteDraft.hydrate(payload.value.draft); channelSelection.value = orderChannelSelection(payload.value, channelSelection.value); loaded.value = true; removalNoticeOpen.value = !!payload.value.removedItems?.length; }
  catch (e) { showError(e); } finally { loading.value = false; }
 }
 const removalNoticeOpen = ref(false);
@@ -197,7 +214,7 @@ let searchTimer, searchController, searchVersion = 0, searchedCatalogQuery = '',
 function openExactCatalog(query) {
  const product = exactCatalogProduct(results.value, query);
  if (product) openMatrix(product.id, true);
- else catalogEnterHint.value = 'Επιλέξτε προϊόν από τα αποτελέσματα.';
+ else catalogEnterHint.value = 'Επιλέξτε κωδικό από τα αποτελέσματα.';
 }
 function enterCatalog(event) {
  if (event.isComposing || event.repeat || locked.value || matrixOpen.value) return;
@@ -262,39 +279,57 @@ function matrixSaved({ listPatch }) {
  try { payload.value = applySavedListPatch(payload.value, listPatch); matrixOpen.value = false; }
  catch (e) { showError(e); }
 }
-async function mutate(endpoint, params) { await client().write(endpoint, params); if (endpoint === 'cancel-order') progress.value = null; await load(); }
-function confirmEmpty() { confirmation.value = { title: 'Άδειασμα λίστας;', message: `Θα αφαιρεθούν όλα τα αποθηκευμένα προϊόντα (${items.value.length}) και οι ποσότητές τους από ολόκληρη τη λίστα, ανεξάρτητα από τα φίλτρα προβολής.`, label: 'Άδειασμα λίστας', danger: true, action: () => mutate('empty') }; }
-function confirmRemove(item) { confirmation.value = { title: 'Αφαίρεση προϊόντος;', message: `${item.sku} · ${item.name}`, label: 'Αφαίρεση', danger: true, action: () => mutate('remove-parent', { parent_id: item.id }) }; }
+async function mutate(endpoint, params) { if (endpoint === 'empty') await noteDraft.settle(); await client().write(endpoint, params); if (endpoint === 'empty') noteDraft.reset(); if (endpoint === 'cancel-order') progress.value = null; await load(); }
+const emptyOpen = ref(false), emptying = ref(false);
+function confirmEmpty() { if (!locked.value && items.value.length) emptyOpen.value = true; }
+async function emptyList() {
+ if (emptying.value || busy.value) return;
+ emptying.value = true; busy.value = true; error.value = '';
+ try { await mutate('empty', { confirm: EMPTY_CONFIRM_WORD }); emptyOpen.value = false; }
+ catch (e) { emptyOpen.value = false; showError(e); }
+ finally { emptying.value = false; busy.value = false; }
+}
+function confirmRemove(item) { confirmation.value = { title: 'Αφαίρεση κωδικού;', message: `${item.sku} · ${item.name}`, label: 'Αφαίρεση', danger: true, action: () => mutate('remove-parent', { parent_id: item.id }) }; }
 function confirmSubmit() { progress.value = null; const source = channelSelection.value?.canChoose ? ` Προέλευση: ${channelSelection.value.live ? 'Live δειγματισμός' : 'Online'}.` : ''; confirmation.value = { title: 'Υποβολή της λίστας;', message: `${payload.value.totalQty} τεμάχια · Γενικό σύνολο ${money(payload.value.totalVal)}.${source} Μετά την υποβολή θα μεταβείτε στις παραγγελίες σας.`, label: 'Υποβολή', action: submit }; }
 function confirmCancel() { confirmation.value = { title: 'Ακύρωση καταχώρισης;', message: 'Η λίστα και οι ποσότητές σας θα διατηρηθούν για επεξεργασία.', label: 'Ακύρωση καταχώρισης', danger: true, action: () => mutate('cancel-order', { order_id: activeBatch.value.wc_order_id || 0, token: activeBatch.value.batch_token }) }; }
 async function runConfirmation() { const action = confirmation.value?.action; if (!action || busy.value) return; confirmation.value = null; busy.value = true; error.value = ''; try { await action(); } catch (e) { showError(e); } finally { busy.value = false; } }
 const progress = ref(null), progressOpen = ref(false), submitting = ref(false), redirecting = ref(false), submitError = ref('');
 const finalizing = ref(false);
+const submissionStages = ['Προετοιμασία', 'Καταχώριση γραμμών', 'Σύνολα και ολοκλήρωση', 'Μετάβαση'];
+const submissionStage = ref(0);
 const progressPercent = computed(() => progress.value?.total ? Math.min(100, Math.floor(100 * progress.value.processed / progress.value.total)) : 0);
 const safeOrderUrl = computed(() => { try { const redirect = progress.value?.redirect; if (typeof redirect !== 'string' || !redirect) return ''; const url = new URL(redirect, location.origin); return url.origin === location.origin && ['http:', 'https:'].includes(url.protocol) ? url.href : ''; } catch { return ''; } });
 async function submit() {
  if (submitting.value || redirecting.value) return;
- submitting.value = true; busy.value = true; progressOpen.value = true; finalizing.value = false; submitError.value = '';
+ submitting.value = true; busy.value = true; progressOpen.value = true; finalizing.value = false; submissionStage.value = 0; submitError.value = '';
  let destination = '';
  try {
   if (progress.value?.token) progress.value = await client().write('order-status', { token: progress.value.token, order_id: progress.value.order_id });
-  else progress.value = await client().write('start-order', { customer_note: note.value, live_showroom: channelSelection.value?.canChoose && channelSelection.value.live ? '1' : '0', quote_version: payload.value.quoteParents ? JSON.stringify(payload.value.quoteParents) : payload.value.quoteVersion });
+  else { const revision = await noteDraft.flush(); progress.value = await client().write('start-order', { note_revision: revision, live_showroom: channelSelection.value?.canChoose && channelSelection.value.live ? '1' : '0', quote_version: payload.value.quoteParents ? JSON.stringify(payload.value.quoteParents) : payload.value.quoteVersion }); }
+  submissionStage.value = 1;
   while (!progress.value.complete && progress.value.processed < progress.value.total) {
    const before = progress.value.processed;
    progress.value = await client().write('add-batch', { order_id: progress.value.order_id, token: progress.value.token });
    if (progress.value.processed <= before) throw new Error('Η καταχώριση δεν προχώρησε. Δοκιμάστε Συνέχιση.');
   }
-  if (!progress.value.complete) { finalizing.value = true; progress.value = await client().write('finalize-order', { order_id: progress.value.order_id, token: progress.value.token }); }
+  if (!progress.value.complete) {
+   // Commit the 100% batch acknowledgement to the DOM even for a one-batch order.
+   await nextTick();
+   finalizing.value = true; submissionStage.value = 2;
+   progress.value = await client().write('finalize-order', { order_id: progress.value.order_id, token: progress.value.token });
+  }
   destination = safeOrderUrl.value;
   if (!progress.value.complete || !destination) throw new Error('Η καταχώριση ολοκληρώθηκε, αλλά δεν βρέθηκε ασφαλής σύνδεσμος για τις παραγγελίες σας.');
-  note.value = '';
-  redirecting.value = true;
+  noteDraft.reset();
+  redirecting.value = true; submissionStage.value = 3;
   window.location.assign(destination);
- } catch (e) { redirecting.value = false; progressOpen.value = true; submitError.value = e.message; if (e.code === 'account_changed') showError(e); else await load(); }
- finally { finalizing.value = false; submitting.value = false; busy.value = false; }
+ } catch (e) { redirecting.value = false; progressOpen.value = true; submitError.value = e.message; if (e.code === 'note_conflict') noteDraft.markConflict(); if (e.code === 'account_changed') showError(e); else await load(); }
+ finally { submitting.value = false; busy.value = false; }
 }
-function beforeLeave(event) { if (!redirecting.value && (submitting.value || (matrixOpen.value && matrix.isDirty))) { event.preventDefault(); event.returnValue = ''; } }
-function restore(event) { if (event.persisted) { payload.value = {}; channelSelection.value = null; loaded.value = false; matrixOpen.value = false; progress.value = null; progressOpen.value = false; redirecting.value = false; load(); } }
+function beforeLeave(event) { if (!redirecting.value && (noteState.value.dirty || noteState.value.status === 'saving' || submitting.value || (matrixOpen.value && matrix.isDirty))) { event.preventDefault(); event.returnValue = ''; } }
+function restore(event) { if (event.persisted) { payload.value = {}; channelSelection.value = null; loaded.value = false; matrixOpen.value = false; progress.value = null; progressOpen.value = false; redirecting.value = false; finalizing.value = false; submissionStage.value = 0; load(); } }
+onMounted(() => window.addEventListener('focus', refreshNote));
+onUnmounted(() => { window.removeEventListener('focus', refreshNote); noteDraft.dispose(); });
 onMounted(() => { font.value = getComputedStyle(props.container).fontFamily || SYSTEM_FONT; syncRowHeight(); window.addEventListener('resize', syncRowHeight); window.addEventListener('resize', positionCatalogResults); window.addEventListener('scroll', positionCatalogResults, true); window.visualViewport?.addEventListener('resize', positionCatalogResults); window.visualViewport?.addEventListener('scroll', positionCatalogResults); document.addEventListener('pointerdown', dismissCatalogResults); load(); window.addEventListener('beforeunload', beforeLeave); window.addEventListener('pageshow', restore); });
 onUnmounted(() => { listResizeObserver?.disconnect(); clearTimeout(searchTimer); searchController?.abort(); ++searchVersion; pendingCatalogEnter = false; document.removeEventListener('pointerdown', dismissCatalogResults); window.removeEventListener('resize', syncRowHeight); window.removeEventListener('resize', positionCatalogResults); window.removeEventListener('scroll', positionCatalogResults, true); window.visualViewport?.removeEventListener('resize', positionCatalogResults); window.visualViewport?.removeEventListener('scroll', positionCatalogResults); window.removeEventListener('beforeunload', beforeLeave); window.removeEventListener('pageshow', restore); });
 </script>
@@ -310,10 +345,21 @@ onUnmounted(() => { listResizeObserver?.disconnect(); clearTimeout(searchTimer);
 .b2b-result { display: flex; width: 100%; align-items: center; gap: 12px; padding: 12px 4px; margin: 0; border: 0; border-radius: 0; color: #27272a; background: transparent; text-align: left; font-size: 13px; line-height: 1.5; cursor: pointer; box-shadow: none; }
 .b2b-result:hover { background: #fafafa; }
 .b2b-link { display: inline-flex; align-items: center; justify-content: center; min-height: 40px; padding: 8px 16px; border-radius: var(--b2b-radius); background: var(--b2b-primary); color: white; text-decoration: none; font-size: 13px; font-weight: 600; }
-.b2b-progress { display: block; width: 100%; height: 8px; border: 0; border-radius: 8px; overflow: hidden; accent-color: var(--b2b-primary); }
-.b2b-progress::-webkit-progress-bar { background: #f4f4f5; }
-.b2b-progress::-webkit-progress-value { background: var(--b2b-primary); }
-.b2b-progress::-moz-progress-bar { background: var(--b2b-primary); }
+.b2b-progress { display: block; width: 100%; height: 8px; border: 0; border-radius: 8px; overflow: hidden; background: #e4e4e7; }
+.b2b-progress > span { display: block; height: 100%; background: var(--b2b-primary); transition: width .2s ease; }
+.b2b-progress.is-indeterminate > span { animation: b2b-submission-busy 1.4s ease-in-out infinite; }
+.b2b-progress.is-stopped > span { opacity: .45; }
+@keyframes b2b-submission-busy { from { transform: translateX(-100%); } to { transform: translateX(290%); } }
+.submission-stages { list-style: none !important; display: grid; gap: 10px; padding: 0 !important; margin: 20px 0 !important; }
+.submission-stages li { display: flex; align-items: center; gap: 10px; color: #64748b; font-size: 13px; }
+.submission-stages li > span { display: grid; place-items: center; width: 24px; height: 24px; border-radius: 50%; background: #f4f4f5; }
+.submission-stages li.current { color: var(--b2b-primary); font-weight: 700; }
+.submission-stages li.current > span, .submission-stages li.done > span { background: var(--b2b-primary); color: #fff; }
+.submission-lines-done, .note-save-status { color: #64748b; font-size: 12px; line-height: 1.5; margin: 8px 0 0 !important; }
+.note-save-error { color: #b91c1c; }
+.note-conflict-actions { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 8px; }
+.note-remote-preview { white-space: pre-wrap; overflow-wrap: anywhere; max-height: 120px; overflow: auto; padding: 10px; margin: 8px 0 !important; background: #fafafa; border: 1px solid #e4e4e7; font-size: 12px; line-height: 1.5; }
+@media (prefers-reduced-motion: reduce) { .b2b-progress > span { transition: none; } .b2b-progress.is-indeterminate > span { animation: none; width: 100% !important; opacity: .65; } }
 .submission-progress h2 { margin: 16px 0 10px !important; color: #172033; font-size: 22px; line-height: 1.3; font-weight: 700; letter-spacing: -.025em; }
 .submission-pill { display: inline-flex; align-items: center; gap: 7px; padding: 6px 11px; border-radius: var(--b2b-radius-pill, 999px); background: var(--b2b-primary-soft); border: 1px solid var(--b2b-primary-border); color: var(--b2b-primary); font-size: 11px; font-weight: 700; line-height: 1.4; }
 .submission-pill :deep(svg) { width: 15px; height: 15px; flex-basis: 15px; }

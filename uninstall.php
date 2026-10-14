@@ -5,7 +5,7 @@ if ( ! defined( 'WP_UNINSTALL_PLUGIN' ) ) { exit; }
 function b2b_matrix_uninstall_site() {
     global $wpdb;
 
-    foreach ( [ 'b2b_preorder_items', 'b2b_preorder_batches' ] as $suffix ) {
+    foreach ( [ 'b2b_preorder_items', 'b2b_preorder_batches', 'b2b_preorder_drafts' ] as $suffix ) {
         $table = $wpdb->prefix . $suffix;
         if ( preg_match( '/^[A-Za-z0-9_]+$/D', $table ) ) {
             $wpdb->query( "DROP TABLE IF EXISTS `{$table}`" );
@@ -17,6 +17,7 @@ function b2b_matrix_uninstall_site() {
     delete_option( 'b2b_matrix_catalog_generation' );
     delete_option( 'b2b_matrix_legacy_retired' );
     delete_option( 'b2b_matrix_last_season_reset' );
+    delete_option( 'b2b_matrix_draft_epoch' );
     delete_metadata( 'user', 0, '_b2b_matrix_removed_items_' . md5( $wpdb->prefix ), '', true );
 }
 

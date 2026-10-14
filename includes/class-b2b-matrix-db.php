@@ -7,7 +7,7 @@ if ( ! defined( 'ARRAY_A' ) ) { define( 'ARRAY_A', 'ARRAY_A' ); }
  */
 class B2B_Matrix_DB {
     const REMOVAL_NOTICE_META = '_b2b_matrix_removed_items';
-    const DB_VERSION = '3.2.0';
+    const DB_VERSION = '3.5.0';
     const DB_VERSION_OPTION = 'b2b_matrix_db_version';
 
     public static function init() {
@@ -103,7 +103,7 @@ class B2B_Matrix_DB {
         global $wpdb;
         if ( false === $wpdb->query( 'START TRANSACTION' ) ) { return self::db_error(); }
         $deleted = $wpdb->query( $wpdb->prepare( 'DELETE FROM ' . self::table_items() . ' WHERE user_id = %d', $user_id ) );
-        if ( false === $deleted || ! self::update_batch( $token, [ 'status' => 'complete' ] ) || false === $wpdb->query( 'COMMIT' ) ) {
+        if ( false === $deleted || is_wp_error( self::clear_draft_locked( $user_id ) ) || ! self::update_batch( $token, [ 'status' => 'complete' ] ) || false === $wpdb->query( 'COMMIT' ) ) {
             $wpdb->query( 'ROLLBACK' ); return self::db_error();
         }
         delete_user_meta( $user_id, '_b2b_custom_order_list' );
@@ -118,6 +118,68 @@ class B2B_Matrix_DB {
     public static function table_batches() {
         global $wpdb;
         return $wpdb->prefix . 'b2b_preorder_batches';
+    }
+
+    public static function table_drafts() {
+        global $wpdb;
+        return $wpdb->prefix . 'b2b_preorder_drafts';
+    }
+
+    /** Small, indexed account draft. Callers hold the account lock. */
+    public static function get_draft( $user_id ) {
+        global $wpdb;
+        $row = $wpdb->get_row( $wpdb->prepare( 'SELECT customer_note, revision FROM ' . self::table_drafts() . ' WHERE user_id = %d', $user_id ), ARRAY_A );
+        if ( $wpdb->last_error ) { return self::db_error(); }
+        return [
+            'note' => self::legacy_note_text( $row['customer_note'] ?? '' ),
+            // The epoch invalidates even empty drafts held open across seasonal reset.
+            'revision' => hash( 'sha256', $wpdb->prefix . ':' . (int) $user_id . ':' . ( $row['revision'] ?? 0 ) . ':' . get_option( 'b2b_matrix_draft_epoch', 'initial' ) ),
+        ];
+    }
+
+    public static function sanitize_note( $note ) {
+        if ( ! is_string( $note ) || strlen( $note ) > 16000 || preg_match( '/\A.{0,4000}\z/us', $note ) !== 1 ) {
+            return new WP_Error( 'invalid_note', 'Το σχόλιο πρέπει να περιέχει έως 4.000 χαρακτήρες.', [ 'status' => 400 ] );
+        }
+        // Plain text, stored exactly as typed: "< 40 τεμ." or "10%20" must not change. Every output
+        // escapes it (Vue text binding, WooCommerce wp_kses, PDF esc_html), so no HTML encoding here.
+        $note = str_replace( [ "\r\n", "\r" ], "\n", $note );
+        return preg_replace( '/[\x00-\x08\x0B\x0C\x0E-\x1F\x7F]/u', '', $note );
+    }
+
+    /** Drafts saved before 3.6.1 went through sanitize_textarea_field, which stored "<" as "&lt;". */
+    private static function legacy_note_text( $note ) {
+        return str_replace( '&lt;', '<', (string) $note );
+    }
+
+    public static function save_draft( $user_id, $note, $revision ) {
+        $note = self::sanitize_note( $note );
+        if ( is_wp_error( $note ) ) { return $note; }
+        return self::with_user_lock( $user_id, function() use ( $user_id, $note, $revision ) {
+            $editable = self::ensure_editable( $user_id );
+            if ( is_wp_error( $editable ) ) { return $editable; }
+            $draft = self::get_draft( $user_id );
+            if ( is_wp_error( $draft ) ) { return $draft; }
+            if ( ! is_string( $revision ) || ! hash_equals( $draft['revision'], $revision ) ) {
+                return new WP_Error( 'note_conflict', 'Το σχόλιο άλλαξε από άλλη καρτέλα ή συσκευή. Ελέγξτε το αποθηκευμένο σχόλιο πριν συνεχίσετε.', [ 'status' => 409 ] );
+            }
+            if ( $draft['note'] !== $note ) {
+                $saved = self::write_draft_locked( $user_id, $note );
+                if ( is_wp_error( $saved ) ) { return $saved; }
+            }
+            return self::get_draft( $user_id );
+        } );
+    }
+
+    private static function write_draft_locked( $user_id, $note ) {
+        global $wpdb;
+        $sql = $wpdb->prepare( 'INSERT INTO ' . self::table_drafts() . ' (user_id, customer_note, revision, updated_at) VALUES (%d, %s, 1, %s) ON DUPLICATE KEY UPDATE customer_note = VALUES(customer_note), revision = revision + 1, updated_at = VALUES(updated_at)', $user_id, $note, current_time( 'mysql' ) );
+        return false === $wpdb->query( $sql ) ? self::db_error() : true;
+    }
+
+    /** Retain a revision tombstone, so a stale tab cannot resurrect an old note. */
+    public static function clear_draft_locked( $user_id ) {
+        return self::write_draft_locked( $user_id, '' );
     }
 
     public static function check_schema() {
@@ -135,6 +197,7 @@ class B2B_Matrix_DB {
 
         $table_items = self::table_items();
         $table_batches = self::table_batches();
+        $table_drafts = self::table_drafts();
 
         $sql = "CREATE TABLE {$table_items} (
             id BIGINT(20) UNSIGNED NOT NULL AUTO_INCREMENT,
@@ -164,17 +227,27 @@ class B2B_Matrix_DB {
             PRIMARY KEY (id),
             UNIQUE KEY batch_token (batch_token),
             KEY user_status (user_id, status)
+        ) ENGINE=InnoDB {$charset_collate};
+        CREATE TABLE {$table_drafts} (
+            user_id BIGINT(20) UNSIGNED NOT NULL,
+            customer_note TEXT NOT NULL,
+            revision BIGINT(20) UNSIGNED NOT NULL DEFAULT 0,
+            updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+            PRIMARY KEY (user_id)
         ) ENGINE=InnoDB {$charset_collate};";
 
         require_once ABSPATH . 'wp-admin/includes/upgrade.php';
         dbDelta( $sql );
-        foreach ( [ $table_items, $table_batches ] as $table ) {
+        foreach ( [ $table_items, $table_batches, $table_drafts ] as $table ) {
             if ( $wpdb->get_var( $wpdb->prepare( 'SHOW TABLES LIKE %s', $wpdb->esc_like( $table ) ) ) !== $table ) { return; }
             // Transactions are required for mixed deletes/upserts and finalization.
             $engine = $wpdb->get_row( $wpdb->prepare( 'SHOW TABLE STATUS LIKE %s', $wpdb->esc_like( $table ) ), ARRAY_A );
             if ( strtolower( $engine['Engine'] ?? '' ) !== 'innodb' && false === $wpdb->query( "ALTER TABLE `{$table}` ENGINE=InnoDB" ) ) { return; }
         }
         if ( ! $wpdb->get_var( "SHOW COLUMNS FROM `{$table_batches}` LIKE 'snapshot'" ) ) { return; }
+        foreach ( [ 'user_id', 'customer_note', 'revision', 'updated_at' ] as $field ) {
+            if ( ! $wpdb->get_var( $wpdb->prepare( "SHOW COLUMNS FROM `{$table_drafts}` LIKE %s", $field ) ) ) { return; }
+        }
         update_option( self::DB_VERSION_OPTION, self::DB_VERSION );
     }
 
@@ -476,7 +549,10 @@ class B2B_Matrix_DB {
         }
         $table = self::table_items();
         $query = $wpdb->prepare( "DELETE FROM {$table} WHERE user_id = %d", $user_id );
-        if ( false === $wpdb->query( $query ) ) { return self::db_error(); }
+        if ( false === $wpdb->query( 'START TRANSACTION' ) ) { return self::db_error(); }
+        if ( false === $wpdb->query( $query ) || is_wp_error( self::clear_draft_locked( $user_id ) ) || false === $wpdb->query( 'COMMIT' ) ) {
+            $wpdb->query( 'ROLLBACK' ); return self::db_error();
+        }
         delete_user_meta( $user_id, '_b2b_custom_order_list' );
         return true;
     }

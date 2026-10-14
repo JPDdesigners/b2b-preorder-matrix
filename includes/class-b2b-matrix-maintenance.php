@@ -22,6 +22,11 @@ class B2B_Matrix_Maintenance {
                 'columns' => [ 'id', 'batch_token', 'user_id', 'wc_order_id', 'status', 'total_items', 'processed_items', 'error_message', 'snapshot', 'created_at', 'updated_at' ],
                 'indexes' => [ 'PRIMARY' => [ 'id' ], 'batch_token' => [ 'batch_token' ], 'user_status' => [ 'user_id', 'status' ] ],
             ],
+            B2B_Matrix_DB::table_drafts() => [
+                'label' => 'Σχόλια προσχεδίου',
+                'columns' => [ 'user_id', 'customer_note', 'revision', 'updated_at' ],
+                'indexes' => [ 'PRIMARY' => [ 'user_id' ] ],
+            ],
         ];
         $result = [];
         foreach ( $definitions as $table => $definition ) {
@@ -61,6 +66,8 @@ class B2B_Matrix_Maintenance {
             if ( $wpdb->last_error ) { $table['issues'][] = 'Αποτυχία μέτρησης εγγραφών.'; continue; }
             if ( $name === B2B_Matrix_DB::table_items() ) {
                 $table['invalid'] = $wpdb->get_var( "SELECT COUNT(*) FROM `{$name}` WHERE user_id <= 0 OR product_id <= 0 OR variation_id <= 0 OR qty <= 0" );
+            } elseif ( $name === B2B_Matrix_DB::table_drafts() ) {
+                $table['invalid'] = $wpdb->get_var( "SELECT COUNT(*) FROM `{$name}` WHERE user_id <= 0 OR CHAR_LENGTH(customer_note) > 4000" );
             } else {
                 $table['invalid'] = $wpdb->get_var( "SELECT COUNT(*) FROM `{$name}` WHERE user_id <= 0 OR total_items < 0 OR processed_items < 0 OR processed_items > total_items OR status NOT IN ('pending', 'building', 'ready_to_finalize', 'complete', 'failed', 'cancelled')" );
                 $table['active'] = $wpdb->get_var( "SELECT COUNT(*) FROM `{$name}` WHERE status IN (" . self::ACTIVE . ')' );
@@ -87,11 +94,12 @@ class B2B_Matrix_Maintenance {
                 if ( $table['issues'] ) { return new WP_Error( 'schema_error', 'Ο καθαρισμός σταμάτησε: ' . implode( ' ', $table['issues'] ) ); }
             }
             $items = B2B_Matrix_DB::table_items(); $batches = B2B_Matrix_DB::table_batches();
+            $drafts = B2B_Matrix_DB::table_drafts();
             // Include all accounts, even a first save without any table rows yet,
             // plus deleted accounts whose requests might still be finishing.
             // No new callback can enter while the maintenance lock is held.
             $busy = $wpdb->get_var( $wpdb->prepare(
-                "SELECT account_id FROM (SELECT ID AS account_id FROM `{$wpdb->users}` UNION SELECT user_id FROM `{$items}` UNION SELECT user_id FROM `{$batches}`) accounts WHERE COALESCE(IS_FREE_LOCK(CONCAT('b2b_', MD5(CONCAT(%s, ':', account_id)))), 0) <> 1 LIMIT 1", $wpdb->prefix
+                "SELECT account_id FROM (SELECT ID AS account_id FROM `{$wpdb->users}` UNION SELECT user_id FROM `{$items}` UNION SELECT user_id FROM `{$batches}` UNION SELECT user_id FROM `{$drafts}`) accounts WHERE COALESCE(IS_FREE_LOCK(CONCAT('b2b_', MD5(CONCAT(%s, ':', account_id)))), 0) <> 1 LIMIT 1", $wpdb->prefix
             ) );
             if ( $wpdb->last_error ) { return B2B_Matrix_DB::db_error(); }
             if ( $busy !== null ) { return new WP_Error( 'accounts_busy', 'Υπάρχει αίτημα που ενημερώνει λίστα ή υποβολή. Δοκιμάστε ξανά όταν ολοκληρωθεί.' ); }
@@ -108,7 +116,8 @@ class B2B_Matrix_Maintenance {
             // instead of deleting another site's legacy customer lists. Include
             // the marker in the transaction, even if the PHP worker is interrupted.
             if ( false === $wpdb->query( $wpdb->prepare( "INSERT INTO `{$wpdb->options}` (option_name, option_value, autoload) VALUES (%s, '1', 'no') ON DUPLICATE KEY UPDATE option_value = '1', autoload = 'no'", 'b2b_matrix_legacy_retired' ) ) ) { return B2B_Matrix_DB::db_error(); }
-            foreach ( [ $items, $batches ] as $table ) {
+            if ( false === $wpdb->query( $wpdb->prepare( "INSERT INTO `{$wpdb->options}` (option_name, option_value, autoload) VALUES (%s, %s, 'no') ON DUPLICATE KEY UPDATE option_value = VALUES(option_value), autoload = 'no'", 'b2b_matrix_draft_epoch', bin2hex( random_bytes( 16 ) ) ) ) ) { return B2B_Matrix_DB::db_error(); }
+            foreach ( [ $items, $batches, $drafts ] as $table ) {
                 if ( false === $wpdb->query( "DELETE FROM `{$table}`" ) ) { return B2B_Matrix_DB::db_error(); }
             }
             // No account callback can read/cache the old marker during maintenance.
@@ -129,6 +138,7 @@ class B2B_Matrix_Maintenance {
 
     private static function clear_retirement_cache() {
         wp_cache_delete( 'b2b_matrix_legacy_retired', 'options' );
+        wp_cache_delete( 'b2b_matrix_draft_epoch', 'options' );
         wp_cache_delete( 'alloptions', 'options' );
         wp_cache_delete( 'notoptions', 'options' );
     }

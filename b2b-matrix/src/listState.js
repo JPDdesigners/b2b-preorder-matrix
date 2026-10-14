@@ -13,7 +13,7 @@ export function validateListPatch(patch, productId) {
       typeof patch.item.sku === 'string' && typeof patch.item.name === 'string' &&
       Array.isArray(patch.item.root_filters) && Array.isArray(patch.item.category_filters))) ||
     !(patch.quoteVersion === '' || digest(patch.quoteVersion))) {
-    throw new Error('Η αποθήκευση δεν επέστρεψε έγκυρη ενημέρωση του προϊόντος. Ανανεώστε τη λίστα.');
+    throw new Error('Η αποθήκευση δεν επέστρεψε έγκυρη ενημέρωση του κωδικού. Ανανεώστε τη λίστα.');
   }
   return patch;
 }

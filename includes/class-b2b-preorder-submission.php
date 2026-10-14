@@ -70,13 +70,25 @@ class B2B_Preorder_Submission {
         if ( ! is_user_logged_in() || (int) $uid !== get_current_user_id() ) { return self::error( 'Συνδεθείτε στον λογαριασμό σας.', 'forbidden', 403 ); }
         return B2B_Matrix_API::check_read_permissions();
     }
-    public static function start( $uid, $note = '', $expected_quote = null, $live = null ) {
+    public static function start( $uid, $note = '', $expected_quote = null, $live = null, $note_revision = null ) {
         $allowed = self::authorized( $uid );
         if ( is_wp_error( $allowed ) ) { return $allowed; }
-        return B2B_Matrix_DB::with_user_lock( $uid, function() use ( $uid, $note, $expected_quote, $live ) {
+        return B2B_Matrix_DB::with_user_lock( $uid, function() use ( $uid, $note, $expected_quote, $live, $note_revision ) {
             $batch = B2B_Matrix_DB::get_active_batch( $uid );
             if ( $batch && ! empty( $batch['wc_order_id'] ) ) { return self::progress( $batch ); }
             if ( ! $batch ) {
+                if ( $note_revision !== null ) {
+                    $draft = B2B_Matrix_DB::get_draft( $uid );
+                    if ( is_wp_error( $draft ) ) { return $draft; }
+                    if ( ! is_string( $note_revision ) || ! hash_equals( $draft['revision'], $note_revision ) ) {
+                        return self::error( 'Το σχόλιο άλλαξε από άλλη καρτέλα ή συσκευή. Ελέγξτε το αποθηκευμένο σχόλιο.', 'note_conflict' );
+                    }
+                    $note = $draft['note'];
+                } else {
+                    // Compatibility with older clients; never truncate UTF-8 bytes.
+                    $note = B2B_Matrix_DB::sanitize_note( $note );
+                    if ( is_wp_error( $note ) ) { return $note; }
+                }
                 $items = B2B_Matrix_DB::get_user_all_items( $uid );
                 if ( ! $items ) { return self::error( 'Η λίστα σας είναι άδεια.', 'empty_list', 400 ); }
                 $cancelled = function_exists( 'jpd_get_canceled_items_bulk' ) ? (array) jpd_get_canceled_items_bulk( array_column( $items, 'variation_id' ) ) : [];
@@ -96,7 +108,7 @@ class B2B_Preorder_Submission {
                 if ( $expected_quote !== null && ! self::matches_quote( $items, $expected_quote ) ) {
                     return self::error( 'Η λίστα ή οι τιμές άλλαξαν. Ελέγξτε το νέο γενικό σύνολο και υποβάλετε ξανά.', 'list_changed' );
                 }
-                $token = B2B_Matrix_DB::create_batch( $uid, count( $items ), [ 'items' => $items, 'note' => sanitize_textarea_field( $note ), 'origin' => B2B_Order_Channel::capture( $live ) ] );
+                $token = B2B_Matrix_DB::create_batch( $uid, count( $items ), [ 'items' => $items, 'note' => trim( $note ), 'origin' => B2B_Order_Channel::capture( $live ) ] );
                 if ( is_wp_error( $token ) ) { return $token; }
                 $batch = B2B_Matrix_DB::get_batch( $token );
             }

@@ -29,6 +29,7 @@ if ( in_array( '--preview', $argv ?? [], true ) ) {
         static function schema() { return [
             'wp_b2b_preorder_items' => ['label'=>'My List','status'=>['Engine'=>'InnoDB','Rows'=>8157,'Data_length'=>1048576,'Index_length'=>524288],'issues'=>[]],
             'wp_b2b_preorder_batches' => ['label'=>'Υποβολές / batches','status'=>['Engine'=>'InnoDB','Rows'=>120,'Data_length'=>3145728,'Index_length'=>65536],'issues'=>[]],
+            'wp_b2b_preorder_drafts' => ['label'=>'Σχόλια προσχεδίου','status'=>['Engine'=>'InnoDB','Rows'=>530,'Data_length'=>65536,'Index_length'=>0],'issues'=>[]],
         ]; }
         static function health() { return self::schema(); }
     }

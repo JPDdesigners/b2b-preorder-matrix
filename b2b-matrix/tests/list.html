@@ -1,7 +1,9 @@
 <!doctype html><html lang="el"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>B2B list · local integration fixture</title><style>body{margin:0;background:#fafafa;font:14px system-ui}nav{padding:14px 28px;border-bottom:1px solid #e4e4e7;background:white;font-size:12px;color:#71717a}/* Simulate common unlayered theme interference. */button{margin-bottom:1em;text-transform:uppercase;letter-spacing:.1em;border-radius:0}h1,h2,h3{font-size:28px;margin-bottom:20px}input,select,textarea{box-shadow:inset 0 1px 2px #ddd}a{color:#333}</style></head><body><nav>Τοπική προεπισκόπηση · δοκιμαστικά δεδομένα · καμία σύνδεση με κατάστημα</nav><div class="b2b-order-list-container" data-b2b-config='{"ajaxUrl":"/fixture/admin-ajax.php","loginUrl":"?","restBase":"/wp-json/b2b/v1"}'></div>
 <script type="module">
-import { MOCK_DATA } from '../src/stores/mockData.js';
+import { MOCK_DATA as BASE_MOCK } from '../src/stores/mockData.js';
+import { manyColors } from './fixtureColors.js';
 const flags = new URLSearchParams(location.search), originalFetch = window.fetch;
+const MOCK_DATA = flags.has('manycolors') ? manyColors(BASE_MOCK) : BASE_MOCK;
 if (flags.has('headerclash')) {
  const header = document.createElement('header');
  header.className = 'fixture-sticky-header';
@@ -48,6 +50,8 @@ if (flags.has('two')) items = items.slice(0, 2);
 if (flags.has('many') || flags.has('fifty')) items = Array.from({length: flags.has('many') ? 200 : 50}, (_, index) => ({ ...items[index % items.length], id: index + 1001, sku: `SKU-${index + 1001}`, name: `Προϊόν ${index + 1} · ${items[index % items.length].name}` }));
 if (flags.has('long') && items.length) items[0] = { ...items[0], name: 'Παιδικό σετ μπλούζα και παντελόνι με πολύ μεγάλο όνομα για έλεγχο της στοίχισης των στηλών', sku: 'SKU-WITH-A-LONG-CATALOG-CODE-1001', brand_name: 'Joyce Kids Collection', unavailable: true };
 let batch=null, failedOnce=false;
+let draft = {note: flags.has('note') ? 'Παράδοση μετά τις 15:00' : '', revision: 'r0'}, draftVersion = 0;
+const emptyDraft = () => { draft = {note: '', revision: 'r' + ++draftVersion}; };
 const orderChannelContext = {canChoose: flags.has('staff') || flags.has('switched'), defaultLive: flags.has('switched')};
 let removedItems = [];
 if (flags.has('cancelled') || flags.has('cancelledempty')) {
@@ -56,7 +60,7 @@ if (flags.has('cancelled') || flags.has('cancelledempty')) {
 }
 const savedByProduct = new Map(), requestCounts = {};
 const savedFor = id => { if (!savedByProduct.has(id)) savedByProduct.set(id, {...MOCK_DATA.existing_quantities}); return savedByProduct.get(id); };
-const payload = () => ({user_id:7,nonce:'fixture',orderChannelContext,appearance,currency:'EUR',price_decimals:2,season:'Φθινόπωρο / Χειμώνας 2026',items,customerInfo:{company:'ΠΑΠΑΔΟΠΟΥΛΟΥ ΕΜΠΟΡΙΚΗ',afm:'123456789',email:'billing@example.test'},totalQty:items.reduce((n,i)=>n+i.total_qty,0),totalVal:items.reduce((n,i)=>n+i.total_val,0),quoteVersion:'0'.repeat(64),quoteParents:Object.fromEntries(items.map(item=>[item.id,'a'.repeat(64)])),brandSummary:['joyce','paco','dreams'].map(slug=>({slug,name:slug[0].toUpperCase()+slug.slice(1),qty:items.filter(i=>i.brand_slug===slug).reduce((n,i)=>n+i.total_qty,0)})).filter(b=>b.qty),activeBatch:batch&&!batch.complete?{batch_token:'test',wc_order_id:1001,status:batch.status,...batch}:null});
+const payload = () => ({user_id:7,draft:{...draft},nonce:'fixture',orderChannelContext,appearance,currency:'EUR',price_decimals:2,season:'Φθινόπωρο / Χειμώνας 2026',items,customerInfo:{company:'ΠΑΠΑΔΟΠΟΥΛΟΥ ΕΜΠΟΡΙΚΗ',afm:'123456789',email:'billing@example.test'},totalQty:items.reduce((n,i)=>n+i.total_qty,0),totalVal:items.reduce((n,i)=>n+i.total_val,0),quoteVersion:'0'.repeat(64),quoteParents:Object.fromEntries(items.map(item=>[item.id,'a'.repeat(64)])),brandSummary:['joyce','paco','dreams'].map(slug=>({slug,name:slug[0].toUpperCase()+slug.slice(1),qty:items.filter(i=>i.brand_slug===slug).reduce((n,i)=>n+i.total_qty,0)})).filter(b=>b.qty),activeBatch:batch&&!batch.complete?{batch_token:'test',wc_order_id:1001,status:batch.status,...batch}:null});
 window.fetch = async (url, options={}) => {
  const target=new URL(url,location.origin);if(!target.pathname.startsWith('/fixture/'))return originalFetch(url,options);
  const fields=options.method==='POST'?new URLSearchParams(options.body):target.searchParams;const action=fields.get('action');
@@ -71,6 +75,12 @@ window.fetch = async (url, options={}) => {
  if(action==='b2b_get_preorder_list_data') data={...payload(),removedItems,removedNoticeToken:removedItems.length?'fixture-cancellation-1':''};
  else if(action==='b2b_acknowledge_removed_items'){removedItems=[];data=true;}
  else if(action==='b2b_matrix_session') data={user_id:7,nonce:'fixture'};
+ else if(action==='b2b_get_preorder_note') data={user_id:7,draft};
+ else if(action==='b2b_save_preorder_note') {
+  if(flags.has('noteconflict')&&!failedOnce){failedOnce=true;draft={note:'Σχόλιο από άλλη συσκευή',revision:'r'+ ++draftVersion};}
+  if(fields.get('note_revision')!==draft.revision)return new Response(JSON.stringify({success:false,data:{code:'note_conflict',message:'Το σχόλιο άλλαξε από άλλη συσκευή.'}}),{status:409});
+  draft={note:fields.get('customer_note'),revision:'r'+ ++draftVersion};data=draft;document.querySelector('nav').dataset.savedNote=draft.note;
+ }
  else if(action==='b2b_search_products') {
   if(flags.has('slowsearch'))await new Promise(r=>setTimeout(r,800));
   const query=fields.get('q').trim().toLocaleLowerCase('el'), ranks={exact:0,prefix:1,contains:2,title:3};
@@ -93,11 +103,11 @@ window.fetch = async (url, options={}) => {
   else{items=items.filter(i=>i.id!==parentId);item=null;}
   data={items:saved,nonce:'fixture',listPatch:{parentId,item,quoteVersion:'a'.repeat(64)}};
  }
- else if(action==='b2b_empty_custom_list'){items=[];data=true;}
+ else if(action==='b2b_empty_custom_list'){if((fields.get('confirm')||'').trim().toLowerCase()!=='delete')return new Response(JSON.stringify({success:false,data:{code:'confirmation_required',message:'Πληκτρολογήστε delete.'}}),{status:400});document.querySelector('nav').dataset.emptied=fields.get('confirm');items=[];emptyDraft();data=true;}
  else if(action==='b2b_remove_parent_custom'){items=items.filter(i=>i.id!==Number(fields.get('parent_id')));data=true;}
- else if(action==='b2b_start_order'){batch ||= {order_id:1001,token:'test',total:240,processed:0,status:'building',complete:false,order_channel:orderChannelContext.canChoose && fields.get('live_showroom')==='1'?'live':'online'};document.querySelector('nav').dataset.submittedChannel=batch.order_channel;data=batch;}
- else if(action==='b2b_add_order_batch'){batch.processed=Math.min(240,batch.processed+150);batch.status=batch.processed===240?'ready_to_finalize':'building';data=batch;}
- else if(action==='b2b_finalize_order'){batch={...batch,complete:true,status:'complete',redirect:flags.has('badredirect')?'https://example.invalid/orders':'/tests/orders.html'};items=[];data=batch;}
+ else if(action==='b2b_start_order'){batch ||= {order_id:1001,token:'test',total:flags.has('small')?2:240,processed:0,status:'building',complete:false,order_channel:orderChannelContext.canChoose && fields.get('live_showroom')==='1'?'live':'online'};document.querySelector('nav').dataset.submittedChannel=batch.order_channel;document.querySelector('nav').dataset.submittedNote=draft.note;data=batch;}
+ else if(action==='b2b_add_order_batch'){batch.processed=Math.min(batch.total,batch.processed+150);batch.status=batch.processed===batch.total?'ready_to_finalize':'building';data=batch;}
+ else if(action==='b2b_finalize_order'){batch={...batch,complete:true,status:'complete',redirect:flags.has('badredirect')?'https://example.invalid/orders':'/tests/orders.html'};items=[];emptyDraft();data=batch;}
  else if(action==='b2b_order_process_status')data=batch;
  else if(action==='b2b_cancel_order'){batch=null;data=true;}
  else return new Response(JSON.stringify({success:false,data:{message:'Unknown fixture action'}}),{status:400});

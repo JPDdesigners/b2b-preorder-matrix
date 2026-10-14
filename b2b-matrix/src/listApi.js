@@ -3,7 +3,7 @@ export function createListApi(endpoint, fetcher = fetch, origin = window.locatio
   const url = new URL(endpoint, origin);
   if (url.origin !== origin) throw new Error('Μη έγκυρη διεύθυνση σύνδεσης.');
   let userId = null;
-  const actions = { 'list-data': 'b2b_get_preorder_list_data', 'search-products': 'b2b_search_products', empty: 'b2b_empty_custom_list', 'remove-parent': 'b2b_remove_parent_custom', 'start-order': 'b2b_start_order', 'add-batch': 'b2b_add_order_batch', 'finalize-order': 'b2b_finalize_order', 'order-status': 'b2b_order_process_status', 'cancel-order': 'b2b_cancel_order', 'acknowledge-removals': 'b2b_acknowledge_removed_items' };
+  const actions = { 'draft-note': 'b2b_get_preorder_note', 'save-note': 'b2b_save_preorder_note', 'list-data': 'b2b_get_preorder_list_data', 'search-products': 'b2b_search_products', empty: 'b2b_empty_custom_list', 'remove-parent': 'b2b_remove_parent_custom', 'start-order': 'b2b_start_order', 'add-batch': 'b2b_add_order_batch', 'finalize-order': 'b2b_finalize_order', 'order-status': 'b2b_order_process_status', 'cancel-order': 'b2b_cancel_order', 'acknowledge-removals': 'b2b_acknowledge_removed_items' };
   async function request(action, params = {}, write = false, signal) {
     const target = new URL(url);
     const fields = new URLSearchParams({ action, ...params });
@@ -22,8 +22,10 @@ export function createListApi(endpoint, fetcher = fetch, origin = window.locatio
   return {
     async read(endpoint, params = {}, signal) {
       const data = await request(actions[endpoint], params, false, signal);
+      if (endpoint === 'draft-note' && data?.user_id !== userId) { const error = new Error('Ο λογαριασμός άλλαξε. Ανανεώστε τη λίστα.'); error.code = 'account_changed'; throw error; }
       if (endpoint === 'list-data') {
         if (!Number.isInteger(data?.user_id) || data.user_id <= 0) throw new Error('Δεν επιβεβαιώθηκε ο λογαριασμός.');
+        if (userId && data.user_id !== userId) { const error = new Error('Ο λογαριασμός άλλαξε. Ανανεώστε τη σελίδα.'); error.code = 'account_changed'; throw error; }
         userId = data.user_id;
       }
       return data;

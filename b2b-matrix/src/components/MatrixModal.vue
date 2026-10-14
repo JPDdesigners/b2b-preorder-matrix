@@ -1,5 +1,5 @@
 <template>
-  <DialogModal open fullscreen label="Επεξεργασία προϊόντος" @close="$emit('close')">
+  <DialogModal open fullscreen label="Επεξεργασία κωδικού" @close="$emit('close')">
     <div class="b2b-matrix-modal-dialog">
       <!-- Modal Header -->
       <div class="b2b-matrix-modal-header">
@@ -17,6 +17,7 @@
       <!-- Modal Body (Housing the actual App / MatrixTable) -->
       <div class="b2b-matrix-modal-body">
         <section
+          ref="app"
           class="b2b-matrix-app"
           aria-label="Λίστα παραγγελίας"
           :style="themeStyle"
@@ -47,7 +48,7 @@
             <!-- Footer of MatrixTable -->
             <footer class="matrix-footer">
               <div class="order-summary">
-                <span class="summary-label">Σύνολο επιλογής · συνολίκη αξία</span>
+                <span class="summary-label">Σύνολο επιλογής · συνολική αξία</span>
                 <div v-if="store.ready" class="summary-numbers">
                   <strong>{{ store.totalQty }} <small>τεμ.</small></strong>
                   <span class="summary-divider"></span>
@@ -107,7 +108,7 @@
 </template>
 
 <script setup>
-import { computed, provide } from 'vue';
+import { computed, provide, ref, onMounted, onUnmounted } from 'vue';
 import { appearanceStyle, SYSTEM_FONT, THEME_KEY } from '../theme.js';
 import UiIcon from './UiIcon.vue';
 import B2BButton from './ui/B2BButton.vue';
@@ -124,6 +125,22 @@ const emit = defineEmits(['close', 'saved']);
 
 const themeStyle = computed(() => appearanceStyle(props.store.appearance, SYSTEM_FONT));
 provide(THEME_KEY, themeStyle);
+
+// Desktop: the wheel over the side margins, the top bar or the footer scrolls the colour list,
+// so there is always a place to scroll that can never change a quantity.
+const app = ref(null);
+function forwardWheel(event) {
+  const root = app.value, scroller = root?.querySelector('.matrix-table-outer');
+  if (!root || !scroller || event.defaultPrevented || event.ctrlKey || event.metaKey) return;
+  if (scroller.contains(event.target) || event.target.closest?.('dialog') !== root.closest('dialog')) return;
+  const unit = event.deltaMode === 1 ? 16 : event.deltaMode === 2 ? scroller.clientHeight : 1;
+  const top = (event.shiftKey ? 0 : event.deltaY) * unit;
+  if (!top) return;
+  event.preventDefault();
+  scroller.scrollBy({ top });
+}
+onMounted(() => window.addEventListener('wheel', forwardWheel, { passive: false }));
+onUnmounted(() => window.removeEventListener('wheel', forwardWheel));
 
 async function handleSave() {
   const saved = await props.store.submitOrder();
@@ -215,11 +232,14 @@ async function handleSave() {
   font-variant-numeric: tabular-nums;
   box-sizing: border-box;
 }
+/* One vertical scroller: the editor body. The top bar (Back/X) and the footer stay fixed around it,
+   and the docked size header locks at its top edge while colours scroll underneath. */
 .b2b-matrix-app :deep(.matrix-table-outer) {
   flex: 1;
   min-height: 0;
   overflow-y: auto;
   overscroll-behavior-y: contain;
+  -webkit-overflow-scrolling: touch;
 }
 .b2b-matrix-app > .loading-state,
 .b2b-matrix-app > .empty-state { overflow-y: auto; }

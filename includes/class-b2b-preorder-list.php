@@ -5,6 +5,7 @@ require_once __DIR__ . '/class-b2b-order-channel.php';
 
 class B2B_Preorder_List {
     const BATCH_SIZE = 150;
+    const EMPTY_CONFIRM_WORD = 'delete';
     const ACTIONS = [
         'b2b_get_preorder_list_data' => 'list-data', 'b2b_search_products' => 'search-products',
         'b2b_empty_custom_list' => 'empty', 'b2b_empty_preorder_list' => 'empty',
@@ -14,6 +15,7 @@ class B2B_Preorder_List {
         'b2b_finalize_order' => 'finalize-order', 'b2b_order_process_status' => 'order-status',
         'b2b_cancel_order' => 'cancel-order',
         'b2b_acknowledge_removed_items' => 'acknowledge-removals',
+        'b2b_get_preorder_note' => 'draft-note', 'b2b_save_preorder_note' => 'save-note',
     ];
     public static function init() {
         add_shortcode( 'b2b_preorder_list', [ __CLASS__, 'render_shortcode' ] );
@@ -37,7 +39,7 @@ class B2B_Preorder_List {
     public static function register_rest_routes() {
         foreach ( array_unique( self::ACTIONS ) as $endpoint ) {
             register_rest_route( 'b2b/v1', '/preorder/' . $endpoint, [
-                'methods' => in_array( $endpoint, [ 'list-data', 'search-products', 'matrix-for-edit' ], true ) ? 'GET' : 'POST',
+                'methods' => in_array( $endpoint, [ 'list-data', 'search-products', 'matrix-for-edit', 'draft-note' ], true ) ? 'GET' : 'POST',
                 'permission_callback' => [ __CLASS__, 'check_permission' ],
                 'callback' => function( $request ) use ( $endpoint ) { return rest_ensure_response( self::dispatch( $endpoint, $request->get_params() ) ); },
             ] );
@@ -47,7 +49,7 @@ class B2B_Preorder_List {
         B2B_Matrix_API::send_nocache_headers();
         $permission = self::check_permission();
         if ( is_wp_error( $permission ) ) { self::send_error( $permission ); }
-        $read = in_array( $endpoint, [ 'list-data', 'search-products', 'matrix-for-edit' ], true );
+        $read = in_array( $endpoint, [ 'list-data', 'search-products', 'matrix-for-edit', 'draft-note' ], true );
         if ( ! $read && ! check_ajax_referer( 'wp_rest', 'security', false ) ) {
             self::send_error( new WP_Error( 'invalid_nonce', 'Η σύνδεση έληξε. Ανανεώστε τη λίστα.', [ 'status' => 403 ] ) );
         }
@@ -63,18 +65,24 @@ class B2B_Preorder_List {
         $permission = self::check_permission();
         if ( is_wp_error( $permission ) ) { return $permission; }
         $uid = get_current_user_id();
-        $read = in_array( $endpoint, [ 'list-data', 'search-products', 'matrix-for-edit' ], true );
+        $read = in_array( $endpoint, [ 'list-data', 'search-products', 'matrix-for-edit', 'draft-note' ], true );
         if ( ! $read && (int) ( $params['expected_user_id'] ?? 0 ) !== $uid ) {
             return new WP_Error( 'account_changed', 'Ο λογαριασμός άλλαξε. Ανανεώστε τη λίστα πριν συνεχίσετε.', [ 'status' => 409 ] );
         }
         try {
             switch ( $endpoint ) {
                 case 'list-data': $data = self::get_list_payload( $uid ); break;
+                case 'draft-note': $data = B2B_Matrix_DB::with_user_lock( $uid, function() use ( $uid ) { $draft = B2B_Matrix_DB::get_draft( $uid ); return is_wp_error( $draft ) ? $draft : [ 'user_id' => $uid, 'draft' => $draft ]; } ); break;
+                case 'save-note': $data = B2B_Matrix_DB::save_draft( $uid, $params['customer_note'] ?? null, $params['note_revision'] ?? null ); break;
                 case 'acknowledge-removals': $data = B2B_Matrix_DB::acknowledge_removals( $uid, $params['notice_token'] ?? null ); break;
                 case 'search-products':
                     $q = is_string( $params['q'] ?? null ) ? sanitize_text_field( substr( $params['q'], 0, 120 ) ) : '';
                     $data = strlen( $q ) >= 2 ? self::search_products_catalog( $q, ! empty( $params['sku_only'] ), $uid ) : []; break;
-                case 'empty': $data = B2B_Matrix_DB::clear_user_items( $uid ); break;
+                case 'empty':
+                    if ( ! is_string( $params['confirm'] ?? null ) || strtolower( trim( $params['confirm'] ) ) !== self::EMPTY_CONFIRM_WORD ) {
+                        return new WP_Error( 'confirmation_required', 'Πληκτρολογήστε «' . self::EMPTY_CONFIRM_WORD . '» για να επιβεβαιώσετε το άδειασμα της λίστας.', [ 'status' => 400 ] );
+                    }
+                    $data = B2B_Matrix_DB::clear_user_items( $uid ); break;
                 case 'remove-parent':
                     $id = $params['parent_id'] ?? '';
                     if ( ! is_scalar( $id ) || ! preg_match( '/^[1-9][0-9]*$/D', (string) $id ) ) { return new WP_Error( 'invalid_product', 'Μη έγκυρο προϊόν.', [ 'status' => 400 ] ); }
@@ -84,7 +92,7 @@ class B2B_Preorder_List {
                     $items = $params['items'] ?? null;
                     if ( is_string( $items ) ) { $items = json_decode( $items, true ); }
                     $data = B2B_Matrix_API::save_user_product_quantities( $uid, $params['parent_id'] ?? null, $items ); break;
-                case 'start-order': $data = self::execute_start_order( $uid, is_string( $params['customer_note'] ?? null ) ? substr( $params['customer_note'], 0, 4000 ) : '', $params['quote_version'] ?? null, $params['live_showroom'] ?? null ); break;
+                case 'start-order': $data = self::execute_start_order( $uid, $params['customer_note'] ?? '', $params['quote_version'] ?? null, $params['live_showroom'] ?? null, $params['note_revision'] ?? null ); break;
                 default:
                     if ( ! in_array( $endpoint, [ 'add-batch', 'finalize-order', 'order-status', 'cancel-order' ], true ) ) { return new WP_Error( 'invalid_action', 'Μη έγκυρη ενέργεια.', [ 'status' => 400 ] ); }
                     $token = $params['token'] ?? $params['process_token'] ?? '';
@@ -95,7 +103,7 @@ class B2B_Preorder_List {
             return is_wp_error( $data ) ? $data : [ 'success' => true, 'data' => $data ];
         } catch ( Throwable $e ) { return B2B_Matrix_DB::db_error(); }
     }
-    public static function execute_start_order( $uid, $note = '', $expected_quote = null, $live = null ) { return B2B_Preorder_Submission::start( $uid, $note, $expected_quote, $live ); }
+    public static function execute_start_order( $uid, $note = '', $expected_quote = null, $live = null, $note_revision = null ) { return B2B_Preorder_Submission::start( $uid, $note, $expected_quote, $live, $note_revision ); }
     public static function execute_add_batch( $uid, $oid, $token ) { return B2B_Preorder_Submission::run( 'add-batch', $uid, $oid, $token ); }
     public static function execute_finalize_order( $uid, $oid, $token ) { return B2B_Preorder_Submission::run( 'finalize-order', $uid, $oid, $token ); }
     public static function rest_remove_parent( $request ) { return self::dispatch( 'remove-parent', [ 'parent_id' => $request->get_param( 'parent_id' ), 'expected_user_id' => get_current_user_id() ] ); }
@@ -169,6 +177,8 @@ class B2B_Preorder_List {
         $removed_items_alert = [];
         $removed_rows = [];
         $active_batch = B2B_Matrix_DB::get_active_batch( $user_id );
+        $draft = $saved_quantities === null ? B2B_Matrix_DB::get_draft( $user_id ) : null;
+        if ( is_wp_error( $draft ) ) { return $draft; }
         $can_prune = $saved_quantities === null && ! $active_batch;
         $valid_items = $raw_items;
         $cancelled = function_exists( 'jpd_get_canceled_items_bulk' ) ? (array) jpd_get_canceled_items_bulk( array_column( $raw_items, 'variation_id' ) ) : [];
@@ -420,6 +430,7 @@ class B2B_Preorder_List {
             'quoteVersion' => $quote_valid ? B2B_Preorder_Submission::quote_version( $quote_items ) : '',
             'quoteParents' => (object) B2B_Preorder_Submission::parent_quotes( $quote_items ),
             'activeBatch'  => $active_batch,
+            'draft' => $draft,
             'orderChannelContext' => B2B_Order_Channel::context(),
         ];
     }
